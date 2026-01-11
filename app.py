@@ -6,30 +6,24 @@ from bs4 import BeautifulSoup
 # --- ตั้งค่าหน้าเว็บ ---
 st.set_page_config(page_title="Affiliate Script Gen (Pro)", page_icon="🎬")
 
-# --- ฟังก์ชันดึงข้อมูลจากเว็บ (Web Scraper) ---
+# --- ฟังก์ชันดึงข้อมูลจากเว็บ ---
 def scrape_web(url):
     try:
-        # แอบปลอมตัวเป็นคนใช้งานทั่วไป (ไม่ใช่บอท)
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
         response = requests.get(url, headers=headers, timeout=10)
         
         if response.status_code == 200:
             soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # พยายามหาชื่อสินค้า (Title)
             title = soup.title.string if soup.title else ""
-            
-            # พยายามหารายละเอียด (Meta Description)
             meta = soup.find('meta', attrs={'name': 'description'})
             description = meta['content'] if meta else ""
-            
             return f"ชื่อสินค้าจากเว็บ: {title}\nรายละเอียดเพิ่มเติม: {description}"
         else:
             return "ไม่สามารถเข้าถึงเว็บไซต์ได้ (อาจมีการป้องกันบอท)"
     except Exception as e:
         return f"เกิดข้อผิดพลาด: {str(e)}"
 
-# --- ฟังก์ชันเรียก AI ---
+# --- ฟังก์ชันเรียก AI (แบบกันเหนียว) ---
 def generate_script(api_key, product_name, features, tone, url_info=""):
     prompt = f"""
     สวมบทบาทเป็น Creative Director มือทองสำหรับ TikTok/Reels
@@ -51,13 +45,29 @@ def generate_script(api_key, product_name, features, tone, url_info=""):
     (ทำซ้ำจนครบ 4 ฉาก)
     """
     
-    try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"เกิดข้อผิดพลาด: {e}"
+    genai.configure(api_key=api_key)
+    
+    # รายชื่อโมเดลที่จะลองเรียกใช้ (เรียงจากใหม่ไปเก่า)
+    model_list = [
+        'gemini-1.5-flash',       # ใหม่สุด เร็ว
+        'gemini-1.5-flash-001',   # ระบุรุ่นย่อย
+        'gemini-1.5-pro',         # ตัวฉลาด
+        'gemini-pro'              # ตัวมาตรฐาน (เก่า)
+    ]
+    
+    last_error = ""
+    
+    # วนลูปลองทีละตัว ถ้าตัวแรก Error ให้ลองตัวถัดไป
+    for model_name in model_list:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            return response.text # ถ้าสำเร็จ ให้ส่งคำตอบกลับเลย
+        except Exception as e:
+            last_error = e
+            continue # ถ้าพัง ให้ข้ามไปลองตัวถัดไป
+            
+    return f"ขออภัยครับ ระบบลองใช้ทุกโมเดลแล้วแต่ยังไม่ได้ Error ล่าสุดคือ: {last_error}"
 
 # --- ส่วนหน้าจอหลัก (UI) ---
 with st.sidebar:
@@ -68,9 +78,7 @@ with st.sidebar:
 st.title("🎬 AI ช่วยคิดคลิป Affiliate (SaaS)")
 st.caption("วางลิงก์สินค้า หรือ กรอกเองก็ได้ครบจบในที่เดียว")
 
-# --- ส่วนฟอร์มรับข้อมูล ---
 with st.form("script_form"):
-    # เพิ่มช่องใส่ URL
     url_input = st.text_input("🔗 วางลิงก์สินค้า (TikTok Shop / Shopee / Lazada)", placeholder="https://...")
     
     col1, col2 = st.columns(2)
@@ -83,25 +91,23 @@ with st.form("script_form"):
     
     submitted = st.form_submit_button("🚀 สร้างสคริปต์เดี๋ยวนี้")
 
-# --- ส่วนแสดงผล ---
 if submitted:
     if not api_key:
         st.error("กรุณาใส่ API Key ก่อนครับ")
     else:
-        with st.spinner("🤖 AI กำลังทำงาน..."):
-            
-            # Step 1: ถ้ามีลิงก์ ให้ลองดึงข้อมูลก่อน
+        with st.spinner("🤖 AI กำลังทำงาน... (อาจใช้เวลาลองโมเดลสักครู่)"):
             scraped_data = ""
             if url_input:
                 with st.status("กำลังแกะข้อมูลจากลิงก์...", expanded=False) as status:
                     scraped_data = scrape_web(url_input)
                     status.update(label="ดึงข้อมูลเว็บเรียบร้อย!", state="complete", expanded=False)
             
-            # Step 2: ส่งข้อมูลทั้งหมดให้ AI
             final_product_name = product_name if product_name else "สินค้าจากลิงก์"
             result = generate_script(api_key, final_product_name, features, tone_select, scraped_data)
             
-            st.success("เสร็จเรียบร้อย!")
-            st.markdown("---")
-            st.markdown(result)
-
+            if "ขออภัยครับ" in result:
+                st.error(result)
+            else:
+                st.success("เสร็จเรียบร้อย!")
+                st.markdown("---")
+                st.markdown(result)
