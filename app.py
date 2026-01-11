@@ -6,13 +6,13 @@ import json
 from PIL import Image
 
 # --- ตั้งค่าหน้าเว็บ ---
-st.set_page_config(page_title="Affiliate Script Gen (SEO+Vision)", page_icon="🔥")
+st.set_page_config(page_title="Affiliate Script Gen (Viral Edition)", page_icon="🚀")
 
-# --- Session State (จำค่าข้อมูล) ---
+# --- Session State ---
 if 'scraped_title' not in st.session_state: st.session_state.scraped_title = ""
 if 'scraped_desc' not in st.session_state: st.session_state.scraped_desc = ""
 
-# --- ฟังก์ชัน 1: ค้นหาโมเดลอัตโนมัติ (แก้ปัญหา 404) ---
+# --- ฟังก์ชัน 1: ค้นหาโมเดลอัตโนมัติ ---
 def get_valid_model(api_key):
     try:
         genai.configure(api_key=api_key)
@@ -23,25 +23,22 @@ def get_valid_model(api_key):
                     available_models.append(m.name)
         except: pass
         
-        # ลำดับโมเดลที่อยากได้ (เน้น 1.5 เพราะฉลาดและดูรูปได้)
         preferred_order = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-pro']
         for model_name in preferred_order:
             if model_name in available_models: return model_name
-        
         return available_models[0] if available_models else 'models/gemini-1.5-flash'
     except: return None
 
-# --- ฟังก์ชัน 2: ดึงข้อมูลเว็บ (Cloudscraper + JSON-LD) ---
+# --- ฟังก์ชัน 2: ดึงข้อมูลเว็บ ---
 def scrape_web(url):
     try:
         scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
         response = scraper.get(url, timeout=15)
-        
         if response.status_code == 200:
             soup = BeautifulSoup(response.content, 'html.parser')
             final_title, final_desc = "", ""
 
-            # สูตร 1: JSON-LD (แม่นสุด)
+            # JSON-LD
             scripts = soup.find_all('script', type='application/ld+json')
             for script in scripts:
                 try:
@@ -51,11 +48,10 @@ def scrape_web(url):
                         final_desc = data.get('description', '')
                         break
                     if '@type' in data and data['@type'] == 'BreadcrumbList':
-                        if 'itemListElement' in data:
-                            final_title = data['itemListElement'][-1]['item']['name']
+                        if 'itemListElement' in data: final_title = data['itemListElement'][-1]['item']['name']
                 except: continue
 
-            # สูตร 2: Open Graph
+            # Open Graph
             if not final_title:
                 og_title = soup.find('meta', property='og:title')
                 if og_title: final_title = og_title.get('content', '')
@@ -63,10 +59,7 @@ def scrape_web(url):
                 og_desc = soup.find('meta', property='og:description')
                 if og_desc: final_desc = og_desc.get('content', '')
 
-            # สูตร 3: Title ธรรมดา
             if not final_title and soup.title: final_title = soup.title.string
-
-            # คลีนข้อมูล
             clean_title = final_title.split('|')[0].split(' - ')[0].strip()
             
             if clean_title: return clean_title, final_desc
@@ -74,59 +67,62 @@ def scrape_web(url):
         else: return None, f"เข้าเว็บไม่ได้ (Status: {response.status_code})"
     except Exception as e: return None, f"Error: {str(e)}"
 
-# --- ฟังก์ชัน 3: สร้างสคริปต์ (SEO & Vision Optimized) ---
+# --- ฟังก์ชัน 3: สร้างสคริปต์ (Viral & Short Prompt) ---
 def generate_script(api_key, model_name, product, features, tone, url_info, image_file=None):
     
-    # Prompt ใหม่: เน้น SEO, Hashtag และความกระชับ
+    # 🔥 PROMPT สูตรไวรัล: สั้น กระชับ เล่นกับความอยากรู้ 🔥
     prompt_text = f"""
-    Role: Professional TikTok/Reels Content Strategist & SEO Expert.
-    Task: Plan a viral video for product: '{product}'.
-    Language: Thai (Natural, Engaging, Spoken style).
+    Role: Viral Content Creator (TikTok/Reels Expert).
+    Task: Create content for product '{product}'.
+    Language: Thai (Slang, Trendy, Super Short).
     
-    Context Inputs:
-    - Product Features: {features}
-    - Info from Link: {url_info}
-    - Mood/Tone: {tone}
+    Inputs:
+    - Features: {features} {url_info}
+    - Tone: {tone}
     
     Requirements:
-    1. **SEO Caption:** Write a compelling caption that includes 3-5 high-traffic keywords naturally.
-    2. **Hashtags:** Provide 6-10 hashtags mixing broad (e.g., #TikTokพากิน) and niche tags.
-    3. **Script Structure:** 4 Scenes (Hook -> Pain/Problem -> Solution/Benefit -> CTA). Keep it SHORT & PUNCHY.
-    4. **Visual Prompts:** Describe exactly what to show. If an image is provided, MATCH the description to the real product (color, shape).
+    1. **Viral Caption:** - MAX 2 lines only! (Excluding hashtags).
+       - Use "Curiosity Gap" or "Bold Statement" (e.g., "Don't buy if...", "Found it!").
+       - Use 2-3 emojis.
+    2. **SEO Hashtags:** - 5-8 Hashtags mixed of Trending & Niche.
+    3. **Script (Fast-Paced):** - 4 Scenes. 
+       - Scene 1 (Hook) must be < 3 seconds.
+       - Use short sentences. No lecture style.
+    4. **Visuals:** Match with the uploaded image (if any).
 
     Output Format:
-    ## 📝 Caption & SEO
-    **Caption:** [Caption with keywords]
-    **Hashtags:** [List of hashtags]
+    ## 🔥 Viral Caption
+    [Short & Punchy Headline]
+    [Call to Action in 1 sentence]
+    
+    [Hashtags]
 
-    ## 🎬 Video Script (30-45s)
-    ### Scene 1: Hook (3s)
-    **🗣️ Speak:** [Stop-scrolling sentence]
-    **🖼️ Visual:** [Specific visual detail]
+    ## 🎬 Script (30s)
+    ### Scene 1: Hook (Stop the scroll!)
+    **🗣️ Speak:** ...
+    **🖼️ Visual:** ...
 
-    ### Scene 2: The Problem
-    **🗣️ Speak:** [Relatable pain point]
-    **🖼️ Visual:** [Visual showing the problem]
+    ### Scene 2: The Pain/Truth
+    **🗣️ Speak:** ...
+    **🖼️ Visual:** ...
 
-    ### Scene 3: The Solution
-    **🗣️ Speak:** [Product benefit/How to use]
-    **🖼️ Visual:** [Product showcase]
+    ### Scene 3: The Magic (Solution)
+    **🗣️ Speak:** ...
+    **🖼️ Visual:** ...
 
-    ### Scene 4: Call to Action (CTA)
-    **🗣️ Speak:** [Urgent command to buy]
-    **🖼️ Visual:** [Pointing to basket/Flash sale overlay]
+    ### Scene 4: Buy Now
+    **🗣️ Speak:** ...
+    **🖼️ Visual:** ...
     """
     
     contents = [prompt_text]
 
-    # จัดการรูปภาพ (ถ้ามี)
     if image_file:
         try:
             img = Image.open(image_file)
             contents.append(img)
-            contents[0] += "\n\n**IMPORTANT:** Analyze the attached image deeply. Ensure 'Visual' prompts match the REAL product details (Color, Material, Packaging) visible in the image."
-        except Exception as e:
-            return f"Image Error: {e}"
+            contents[0] += "\n\n**Note:** Look at the image. Describe the REAL product in 'Visual' sections."
+        except Exception as e: return f"Image Error: {e}"
 
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel(model_name)
@@ -138,59 +134,51 @@ def generate_script(api_key, model_name, product, features, tone, url_info, imag
 with st.sidebar:
     st.header("⚙️ ตั้งค่าระบบ")
     api_key = st.text_input("Gemini API Key", type="password")
-    st.info("ขอ Key ฟรีที่: aistudio.google.com")
-    
-    if st.button("เช็กสถานะ AI"):
-        if not api_key: st.error("ใส่ Key ก่อนครับ")
-        else:
-            model = get_valid_model(api_key)
-            if model: st.success(f"พร้อมใช้งาน! (Model: {model})")
-            else: st.error("API Key ผิด หรือเชื่อมต่อไม่ได้")
+    if st.button("เช็ก AI"):
+        if api_key and get_valid_model(api_key): st.success("พร้อมลุย!")
+        else: st.error("Key ผิดจ้า")
 
-st.title("🔥 Affiliate Script Gen (SEO Pro)")
-st.caption("สร้างสคริปต์ + แคปชั่น SEO + บรีฟภาพจากสินค้าจริง")
+st.title("🚀 Affiliate Script Gen (Viral Mode)")
+st.caption("สูตรแคปชั่นสั้น เน้นไวรัล + สคริปต์เดินเรื่องไว")
 
 # ส่วนดึงข้อมูล
-with st.expander("🔎 ดึงข้อมูลจากลิงก์ (Optional)"):
+with st.expander("🔎 ดึงข้อมูล (Optional)"):
     col_url, col_btn = st.columns([3, 1])
-    with col_url: url_input = st.text_input("วางลิงก์สินค้า (TikTok/Shopee)")
+    with col_url: url_input = st.text_input("วางลิงก์สินค้า")
     with col_btn:
         st.write("")
         st.write("")
         if st.button("ดึงข้อมูล", use_container_width=True) and url_input:
-            with st.spinner("กำลังเจาะระบบ..."):
+            with st.spinner(".."):
                 title, desc = scrape_web(url_input)
                 if title:
                     st.session_state.scraped_title = title
                     st.session_state.scraped_desc = desc
-                    st.success("✅ ดึงสำเร็จ!")
-                else: st.warning("⚠️ ดึงไม่ได้ กรอกเองด้านล่างครับ")
+                    st.success("✅")
+                else: st.warning("⚠️")
 
 # ฟอร์มหลัก
 with st.form("main_form"):
-    st.subheader("1. ข้อมูลสินค้า")
     product_name = st.text_input("ชื่อสินค้า", value=st.session_state.scraped_title)
-    
-    st.markdown("**📸 รูปสินค้า (แนะนำมาก เพื่อความแม่นยำ)**")
-    uploaded_image = st.file_uploader("เลือกรูปภาพ", type=["png", "jpg", "jpeg", "webp"])
+    st.markdown("**📸 รูปสินค้า (ช่วยให้ AI เห็นภาพจริง)**")
+    uploaded_image = st.file_uploader("เลือกรูป", type=["png", "jpg", "jpeg", "webp"])
     if uploaded_image: st.image(uploaded_image, width=150)
     
-    st.subheader("2. รายละเอียด")
     col1, col2 = st.columns(2)
-    with col1: tone = st.selectbox("สไตล์คลิป", ["ตลก เฮฮา", "จริงจัง รีวิว", "เล่าเรื่อง Story", "ป้ายยาเพื่อนสาว"])
-    with col2: features = st.text_area("จุดเด่น / โปรโมชั่น", value=st.session_state.scraped_desc, height=100)
+    with col1: tone = st.selectbox("สไตล์", ["ตลก/กวนๆ", "จริงจัง/รีวิวพลีชีพ", "ป้ายยาเพื่อนสาว", "ดราม่า/เล่าเรื่อง"])
+    with col2: features = st.text_area("จุดเด่น", value=st.session_state.scraped_desc, height=100)
     
-    submit = st.form_submit_button("🚀 สร้างสคริปต์ SEO", use_container_width=True)
+    submit = st.form_submit_button("⚡ สร้างสคริปต์ไวรัล", use_container_width=True)
 
 if submit:
-    if not api_key: st.error("❌ ลืมใส่ API Key ครับ")
-    elif not product_name and not uploaded_image: st.warning("⚠️ ขอชื่อสินค้า หรือรูปภาพหน่อยครับ")
+    if not api_key: st.error("ใส่ Key ก่อนนะ")
+    elif not product_name and not uploaded_image: st.warning("ขอข้อมูลหน่อย")
     else:
-        with st.spinner("🤖 AI กำลังวิเคราะห์รูปภาพและวางแผน SEO..."):
+        with st.spinner("🔥 กำลังปั้นความไวรัล..."):
             model = get_valid_model(api_key)
             if model:
                 res = generate_script(api_key, model, product_name, features, tone, url_input, uploaded_image)
-                st.success("เรียบร้อย! คัดลอกไปใช้ได้เลย")
+                st.success("เสร็จแล้ว! เอาไปโพสต์ได้เลย")
                 st.markdown("---")
                 st.markdown(res)
-            else: st.error("เชื่อมต่อ AI ไม่ได้ (เช็ก Key/Model)")
+            else: st.error("Error AI")
