@@ -53,7 +53,7 @@ def generate_script(api_key, product_name, features, tone, url_info=""):
     
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
@@ -104,3 +104,4 @@ if submitted:
             st.success("เสร็จเรียบร้อย!")
             st.markdown("---")
             st.markdown(result)
+
