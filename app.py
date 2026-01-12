@@ -20,7 +20,6 @@ def connect_to_gsheet():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         
-        # ตรวจสอบว่ามี Secrets หรือไม่
         if "gcp_service_account" not in st.secrets:
             st.error("❌ ไม่พบข้อมูล Secrets (gcp_service_account)")
             return None
@@ -80,7 +79,7 @@ def check_trial(start_date_str):
         return diff, 3 - diff
     except: return 0, 3
 
-# --- 3. ฟังก์ชัน AI Core System (กลับมาครบเต็มสูบ) ---
+# --- 3. ฟังก์ชัน AI Core System ---
 
 def get_valid_model(api_key):
     """หาโมเดลอัตโนมัติ"""
@@ -96,7 +95,7 @@ def get_valid_model(api_key):
     except: return None
 
 def scrape_web(url):
-    """ดึงข้อมูลเว็บขั้นเทพ (Cloudscraper + JSON-LD)"""
+    """ดึงข้อมูลเว็บเทพ (Cloudscraper + JSON-LD)"""
     try:
         scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
         response = scraper.get(url, timeout=15)
@@ -185,16 +184,12 @@ def login_screen():
         h1 {color: #FF4B4B;}
     </style>
     <div class="main-card">
-        <h1>💎 Affiliate Gen Pro (Business)</h1>
-        <p>ระบบสมาชิกถาวร + ทดลองฟรี 3 วัน</p>
+        <h1>💎 Affiliate Gen Pro</h1>
+        <p>ระบบสมาชิก & ทดลองฟรี 3 วัน</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # ปุ่มเทส Connection
-    if st.button("🛠️ เช็กสถานะ Server (Google Sheets)"):
-        s = connect_to_gsheet()
-        if s: st.success("✅ Online")
-        else: st.error("❌ Offline (Check Secrets)")
+    # --- ส่วนที่ถูกลบ: ปุ่มเช็กสถานะ Server หายไปแล้ว ---
 
     tab1, tab2 = st.tabs(["🔑 เข้าสู่ระบบ", "📝 สมัครสมาชิก"])
 
@@ -202,13 +197,13 @@ def login_screen():
         with st.form("login"):
             u = st.text_input("Username")
             p = st.text_input("Password", type="password")
-            if st.form_submit_button("Log In", use_container_width=True):
-                with st.spinner("Logging in..."):
+            if st.form_submit_button("เข้าสู่ระบบ", use_container_width=True):
+                with st.spinner("กำลังตรวจสอบ..."):
                     data = login_user(u, p)
                     if data:
                         used, left = check_trial(data[3])
                         if used > 3:
-                            st.error(f"หมดอายุ (ใช้ไป {used} วัน)")
+                            st.error(f"หมดอายุ (ใช้ไป {used} วัน) กรุณาติดต่อแอดมิน")
                         else:
                             st.session_state.logged_in = True
                             st.session_state.user_info = {"name": data[0], "email": data[2], "left": left}
@@ -221,15 +216,15 @@ def login_screen():
             new_u = st.text_input("Username *")
             new_e = st.text_input("Email *")
             new_p = st.text_input("Password *", type="password")
-            if st.form_submit_button("Register", use_container_width=True):
+            if st.form_submit_button("สมัครสมาชิก", use_container_width=True):
                 if new_u and new_e and new_p:
-                    with st.spinner("Registering..."):
+                    with st.spinner("กำลังบันทึกข้อมูล..."):
                         if register_user(new_u, new_p, new_e):
-                            st.success("✅ สมัครสำเร็จ! ไปหน้า Login ได้เลย")
+                            st.success("✅ สมัครสำเร็จ! กรุณากลับไปหน้า Login")
                         else:
-                            st.error("สมัครไม่ผ่าน (ชื่อซ้ำ หรือระบบมีปัญหา)")
+                            st.error("สมัครไม่ผ่าน (ชื่ออาจซ้ำ หรือระบบขัดข้อง)")
                 else:
-                    st.warning("กรอกให้ครบครับ")
+                    st.warning("กรอกข้อมูลให้ครบถ้วนนะครับ")
 
 def main_app():
     # Header
@@ -254,13 +249,13 @@ def main_app():
         with col_btn:
             st.write(""); st.write("")
             if st.button("ดึงข้อมูล", use_container_width=True) and url:
-                with st.spinner("เจาะระบบ..."):
+                with st.spinner("กำลังเจาะระบบ..."):
                     t, d = scrape_web(url)
                     if t:
                         st.session_state.scraped_title = t
                         st.session_state.scraped_desc = d
-                        st.success("✅")
-                    else: st.warning("⚠️")
+                        st.success("✅ ดึงข้อมูลสำเร็จ")
+                    else: st.warning("⚠️ ไม่พบข้อมูล (กรอกเองได้เลย)")
 
     # Main Form
     with st.form("gen_form"):
@@ -279,10 +274,10 @@ def main_app():
         submit = st.form_submit_button("🚀 สร้างสคริปต์ + Sora Prompt", use_container_width=True)
 
     if submit:
-        if not my_api_key: st.error("❌ ไม่พบ API Key (กรุณาเช็ก Secrets)")
-        elif not p_name and not img_file: st.warning("⚠️ กรุณาใส่ข้อมูล")
+        if not my_api_key: st.error("❌ ระบบขัดข้อง: ไม่พบ API Key (แจ้งแอดมิน)")
+        elif not p_name and not img_file: st.warning("⚠️ กรุณาใส่ชื่อสินค้า หรืออัปโหลดรูปภาพ")
         else:
-            with st.spinner("🤖 AI กำลังเขียนบทและออกแบบฉาก..."):
+            with st.spinner("🤖 AI กำลังทำงาน..."):
                 model = get_valid_model(my_api_key)
                 if model:
                     res = generate_script(my_api_key, model, p_name, feat, tone, url, img_file)
@@ -296,3 +291,4 @@ if st.session_state.logged_in:
     main_app()
 else:
     login_screen()
+I
