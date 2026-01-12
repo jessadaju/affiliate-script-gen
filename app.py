@@ -15,9 +15,9 @@ import os
 st.set_page_config(page_title="Affiliate Gen Pro", page_icon="💎", layout="centered")
 
 # --- 2. Config & Constants ---
-VALID_INVITE_CODES = ["VIP2024", "EARLYBIRD", "ADMIN"] # รหัสเชิญ
+VALID_INVITE_CODES = ["VIP2024", "EARLYBIRD", "ADMIN"]
 SHEET_NAME = "user_db"
-ADMIN_USERNAME = "admin" # ชื่อ user ที่จะมีสิทธิ์กดต่ออายุให้คนอื่น
+ADMIN_USERNAME = "admin" # ⚠️ อย่าลืมสมัคร User ชื่อ admin ไว้ใช้เองด้วยนะครับ
 
 # --- 3. Google Sheets Database ---
 def connect_to_gsheet():
@@ -46,7 +46,6 @@ def register_user(username, password, email, invite_code):
         hashed_pw = hashlib.sha256(password.encode()).hexdigest()
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         # Structure: [User, Pass, Email, StartDate, InviteCode, PlanDays]
-        # PlanDays = 3 (Default Trial)
         sheet.append_row([username, hashed_pw, email, today, invite_code, "3"])
         return True
     except: return False
@@ -60,46 +59,39 @@ def login_user(username, password):
         except: return None
         if cell:
             row_data = sheet.row_values(cell.row)
-            # row_data: [user, pass, email, start_date, invite_code, plan_days]
             hashed_pw = hashlib.sha256(password.encode()).hexdigest()
             if row_data[1] == hashed_pw:
-                # ถ้าไม่มี Plan Days (ข้อมูลเก่า) ให้ถือว่า 3 วัน
                 if len(row_data) < 6: row_data.append("3")
                 return row_data 
         return None
     except: return None
 
 def extend_user_subscription(target_username, days_to_add):
-    """ฟังก์ชันสำหรับแอดมิน: ต่ออายุให้ลูกค้า"""
+    """ฟังก์ชันสำหรับแอดมิน: ต่ออายุ"""
     sheet = connect_to_gsheet()
     if not sheet: return False
     try:
         cell = sheet.find(target_username)
         if cell:
             row = cell.row
-            # อัปเดต Start Date เป็นวันนี้
             today = datetime.datetime.now().strftime("%Y-%m-%d")
             sheet.update_cell(row, 4, today) 
-            # อัปเดตจำนวนวันที่ใช้งานได้
             sheet.update_cell(row, 6, str(days_to_add))
             return True
         return False
     except: return False
 
 def check_status(start_date_str, plan_days_str):
-    """เช็กสถานะว่าหมดอายุหรือยัง"""
     try:
         start_date = datetime.datetime.strptime(start_date_str, "%Y-%m-%d")
         plan_days = int(plan_days_str)
-        
         now = datetime.datetime.now()
         diff = (now - start_date).days
-        
         remaining = plan_days - diff
-        return diff, remaining # (ใช้ไปแล้ว, เหลืออีก)
+        return diff, remaining
     except: return 0, 0
 
-# --- 4. AI & Scraper (Core) ---
+# --- 4. AI & Scraper ---
 def get_valid_model(api_key):
     try:
         genai.configure(api_key=api_key)
@@ -135,78 +127,162 @@ def scrape_web(url):
 
 def generate_script(api_key, model_name, product, features, tone, url_info, image_file=None):
     prompt_text = f"""
-    Role: Ad Expert. Task: Thai Script + Sora Prompts for '{product}'.
-    Info: {features} {url_info} Tone: {tone}
-    Output: Thai Caption, Hashtags, 4 Scenes Script (Thai Speak + English Sora Prompt).
+    Role: Professional Ad Director & Sora AI Expert.
+    Task: Create a Thai video script and Sora Prompts for '{product}'.
+    Data: {features} {url_info} Tone: {tone}
+    
+    Output Format:
+    ## 📝 Viral Caption (Thai)
+    [Caption 2 lines]
+    [Hashtags]
+
+    ## 🎬 Script & Sora Prompts
+    (4 Scenes: Hook, Pain, Solution, CTA)
+    Format per scene:
+    ### Scene X: [Name]
+    **🗣️ Speak (Thai):** ...
+    **🎥 Sora Prompt (English - Detailed):** ```text
+    [Detailed visual description]
+    ```
     """
     contents = [prompt_text]
     if image_file:
         try:
             img = Image.open(image_file)
             contents.append(img)
+            contents[0] += "\n\n**Vision Instruction:** Analyze the image to write accurate Sora Prompts matching the real product."
         except: pass
 
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel(model_name)
     return model.generate_content(contents).text
 
-# --- 5. UI Logic ---
+# --- 5. UI Logic (Updated Pricing) ---
 
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'user_info' not in st.session_state: st.session_state.user_info = None
 
 def renewal_screen():
-    """หน้าจอจ่ายเงินเมื่อหมดอายุ"""
+    """หน้าจอแสดงราคาและ QR Code"""
     st.markdown("""
     <style>
-        .pay-card {background-color: #262730; padding: 2rem; border-radius: 10px; text-align: center; border: 1px solid #FF4B4B;}
-        h2 {color: #FF4B4B;}
+        .price-card {
+            background-color: #333;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            border: 1px solid #555;
+            height: 100%;
+        }
+        .best-value {
+            border: 2px solid #4CAF50;
+            background-color: #1E3A23;
+        }
+        .price-title { font-size: 1.2rem; font-weight: bold; color: #DDD; }
+        .price-tag { font-size: 1.8rem; font-weight: bold; color: #FF4B4B; margin: 10px 0; }
+        .price-desc { font-size: 0.9rem; color: #AAA; }
     </style>
-    <div class="pay-card">
-        <h2>⚠️ หมดเวลาทดลองใช้ / แพ็กเกจหมดอายุ</h2>
-        <p>กรุณาชำระเงินเพื่อต่ออายุการใช้งาน</p>
+    <div style="text-align:center; margin-bottom:20px;">
+        <h2 style="color:#FF4B4B;">⚠️ แพ็กเกจหมดอายุ</h2>
+        <p>เลือกแพ็กเกจเพื่อใช้งานต่อ</p>
     </div>
     """, unsafe_allow_html=True)
 
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        st.info("📦 **แพ็กเกจ Pro (30 วัน)**")
-        st.write("✅ ใช้งานได้ไม่จำกัด")
-        st.write("✅ สร้างสคริปต์ + Sora Prompt")
-        st.write("💰 **ราคา: 199 บาท**")
+    # --- ตารางราคา ---
+    col1, col2, col3 = st.columns(3)
     
-    with c2:
-        st.write("📲 **สแกนจ่าย (PromptPay)**")
-        # ใส่รูป QR Code ของคุณตรงนี้ (ถ้ามีไฟล์)
-        if os.path.exists("payment_qr.jpg"):
-            st.image("payment_qr.jpg", width=200)
-        else:
-            st.warning("(วางไฟล์ 'payment_qr.jpg' เพื่อแสดง QR)")
-            st.write("เลขบัญชี: 123-456-7890 (นายรวยรวย)")
+    with col1:
+        st.markdown("""
+        <div class="price-card">
+            <div class="price-title">Starter</div>
+            <div class="price-tag">59฿</div>
+            <div class="price-desc">7 วัน</div>
+            <hr>
+            <small>เหมาะสำหรับทดลอง</small>
+        </div>
+        """, unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.success("📢 **แจ้งชำระเงิน:** ส่งสลิปมาที่ LINE: @YourLineID พร้อมแจ้ง Username")
+    with col2:
+        st.markdown("""
+        <div class="price-card">
+            <div class="price-title">Standard</div>
+            <div class="price-tag">99฿</div>
+            <div class="price-desc">15 วัน</div>
+            <hr>
+            <small>คุ้มค่ายิ่งขึ้น</small>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col3:
+        st.markdown("""
+        <div class="price-card best-value">
+            <div style="color:#4CAF50; font-weight:bold; margin-bottom:5px;">🔥 ขายดีที่สุด</div>
+            <div class="price-title">Pro Max</div>
+            <div class="price-tag">169฿</div>
+            <div class="price-desc">30 วัน</div>
+            <hr>
+            <small>เฉลี่ยวันละ 5 บาท</small>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.write("")
+    st.write("")
     
-    if st.button("⬅️ กลับหน้า Login"):
-        st.session_state.logged_in = False
-        st.rerun()
+    # --- ส่วนชำระเงิน ---
+    st.markdown("### 📲 ช่องทางการชำระเงิน")
+    c_qr, c_info = st.columns([1, 2])
+    
+    with c_qr:
+        # ใส่รูป QR Code ของคุณที่ชื่อ payment_qr.jpg
+        if os.path.exists("payment_qr.jpg"):
+            st.image("payment_qr.jpg", caption="สแกนจ่ายได้เลย", use_container_width=True)
+        else:
+            st.warning("No QR Code Image")
+    
+    with c_info:
+        st.info("""
+        **ขั้นตอนการต่ออายุ:**
+        1. เลือกแพ็กเกจที่ต้องการ
+        2. สแกน QR Code หรือโอนเงิน
+        3. ส่งสลิปมาที่ **LINE ID: @YourLine**
+        4. แจ้ง **Username** ของคุณกับแอดมิน
+        
+        *แอดมินจะทำการต่ออายุให้ภายใน 5 นาที*
+        """)
+        
+        if st.button("⬅️ กลับหน้า Login"):
+            st.session_state.logged_in = False
+            st.rerun()
 
 def admin_dashboard():
     """หน้าจัดการแอดมิน"""
-    st.markdown("### 🛠️ Admin Dashboard (จัดการผู้ใช้)")
+    st.markdown("### 🛠️ Admin Dashboard")
+    st.info("จัดการต่ออายุสมาชิก")
     
     with st.form("extend_form"):
-        target_user = st.text_input("ระบุ Username ที่ต้องการต่ออายุ")
-        days = st.selectbox("เลือกแพ็กเกจ", [30, 90, 365, 3])
+        target_user = st.text_input("ระบุ Username ลูกค้า")
+        # ตัวเลือกวันต้องตรงกับแพ็กเกจ
+        days_option = st.selectbox("เลือกแพ็กเกจที่จะเติม", 
+                                   ["7 วัน (59฿)", "15 วัน (99฿)", "30 วัน (169฿)", "ปลดล็อกพิเศษ (365 วัน)"])
+        
+        # แปลงตัวเลือกเป็นตัวเลข
+        days_map = {
+            "7 วัน (59฿)": 7,
+            "15 วัน (99฿)": 15,
+            "30 วัน (169฿)": 30,
+            "ปลดล็อกพิเศษ (365 วัน)": 365
+        }
+        
         if st.form_submit_button("✅ อนุมัติ / ต่ออายุ"):
             if target_user:
+                days_to_add = days_map[days_option]
                 with st.spinner("กำลังอัปเดตข้อมูล..."):
-                    if extend_user_subscription(target_user, days):
-                        st.success(f"ต่ออายุให้ {target_user} เป็นเวลา {days} วัน เรียบร้อย!")
+                    if extend_user_subscription(target_user, days_to_add):
+                        st.success(f"ต่ออายุให้ {target_user} เพิ่ม {days_to_add} วัน เรียบร้อย!")
                     else:
-                        st.error("ไม่พบ Username นี้")
+                        st.error("ไม่พบ Username นี้ในระบบ")
             else:
-                st.warning("ใส่ชื่อ User ก่อนครับ")
+                st.warning("กรุณาใส่ชื่อ Username")
 
 def login_screen():
     st.markdown("""
@@ -224,9 +300,7 @@ def login_screen():
             if st.form_submit_button("เข้าสู่ระบบ", use_container_width=True):
                 data = login_user(u, p)
                 if data:
-                    # data[3]=start_date, data[5]=plan_days
                     used, left = check_status(data[3], data[5])
-                    
                     st.session_state.logged_in = True
                     st.session_state.user_info = {
                         "name": data[0], 
@@ -260,18 +334,18 @@ def login_screen():
 def main_app():
     info = st.session_state.user_info
     
-    # ถ้าเป็น Admin ให้โชว์ Dashboard
+    # Admin Mode
     if info['name'] == ADMIN_USERNAME:
-        st.warning("👨‍💻 คุณอยู่ในโหมดผู้ดูแลระบบ (Admin)")
+        st.warning("👨‍💻 Admin Mode")
         admin_dashboard()
         st.markdown("---")
 
-    # ถ้าหมดอายุ และไม่ใช่ Admin -> ไปหน้าจ่ายเงิน
+    # Expired User
     if info['is_expired'] and info['name'] != ADMIN_USERNAME:
         renewal_screen()
         return
 
-    # --- ส่วนใช้งานปกติ ---
+    # Normal User
     c1, c2 = st.columns([3, 1])
     with c1: st.info(f"👤 {info['name']} | ✅ สถานะปกติ (เหลือ {info['left']} วัน)")
     with c2: 
@@ -281,7 +355,6 @@ def main_app():
             
     my_api_key = st.secrets.get("GEMINI_API_KEY")
     
-    # (Scraper & Generator Code Here - เหมือนเดิม)
     with st.expander("🔎 ดึงข้อมูลสินค้า"):
         url = st.text_input("URL สินค้า")
         if st.button("ดึงข้อมูล") and url:
@@ -296,7 +369,7 @@ def main_app():
         p_name = st.text_input("ชื่อสินค้า", value=st.session_state.get('scraped_title',''))
         img_file = st.file_uploader("รูปสินค้า", type=['png','jpg'])
         if img_file: st.image(img_file, width=150)
-        tone = st.selectbox("สไตล์", ["ตลก", "จริงจัง"])
+        tone = st.selectbox("สไตล์", ["ตลก", "จริงจัง", "รีวิวพลีชีพ"])
         feat = st.text_area("จุดเด่น", value=st.session_state.get('scraped_desc',''))
         
         if st.form_submit_button("🚀 Start"):
