@@ -10,7 +10,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import smtplib
 from email.mime.text import MIMEText
-from email.header import Header  # ✅ เพิ่มบรรทัดนี้: เพื่อแก้ปัญหาหัวข้ออีเมลภาษาไทย
+from email.header import Header  # ✅ เพิ่มตัวนี้เพื่อแก้ปัญหาหัวข้อภาษาไทย
 import random
 import time
 
