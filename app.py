@@ -10,15 +10,16 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import smtplib
 from email.mime.text import MIMEText
+from email.header import Header  # สำคัญ! สำหรับแก้ปัญหาภาษาไทยในหัวข้ออีเมล
 import random
 import time
 
 # --- 1. ตั้งค่าหน้าเว็บ ---
 st.set_page_config(page_title="Affiliate Gen Pro (Verified)", page_icon="🔒", layout="centered")
 
-# --- 2. ระบบอีเมล (Email Service) ---
+# --- 2. ระบบอีเมล (Email Service - UTF-8 Fixed) ---
 def send_verification_email(to_email, otp_code):
-    """ส่งอีเมล OTP หาผู้สมัคร"""
+    """ส่งอีเมล OTP หาผู้สมัคร (รองรับภาษาไทยสมบูรณ์แบบ)"""
     try:
         if "email" not in st.secrets:
             st.error("❌ ไม่พบการตั้งค่าอีเมลใน Secrets")
@@ -27,18 +28,22 @@ def send_verification_email(to_email, otp_code):
         sender_email = st.secrets["email"]["sender_email"]
         sender_password = st.secrets["email"]["sender_password"]
         
+        # หัวข้อและเนื้อหาอีเมล (ภาษาไทย)
         subject = "รหัสยืนยันตัวตน (OTP) - Affiliate Gen Pro"
         body = f"""
         สวัสดีครับ,
         
         รหัสยืนยันตัวตน (OTP) ของคุณคือ: {otp_code}
         
-        รหัสนี้ใช้สำหรับการสมัครสมาชิกเท่านั้น
+        รหัสนี้ใช้สำหรับการสมัครสมาชิกเท่านั้น (มีอายุ 5 นาที)
         ขอบคุณครับ
         """
         
-        msg = MIMEText(body)
-        msg['Subject'] = subject
+        # ⚠️ แก้ไข: ระบุ encoding='utf-8' เพื่อให้รองรับภาษาไทยในเนื้อหา
+        msg = MIMEText(body, 'plain', 'utf-8')
+        
+        # ⚠️ แก้ไข: ใช้ Header เพื่อรองรับภาษาไทยในหัวข้ออีเมล
+        msg['Subject'] = Header(subject, 'utf-8')
         msg['From'] = sender_email
         msg['To'] = to_email
 
@@ -111,29 +116,65 @@ def check_trial(start_date_str):
 def get_valid_model(api_key):
     try:
         genai.configure(api_key=api_key)
-        # ... (เหมือนเดิม) ...
-        return 'models/gemini-1.5-flash'
+        preferred = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro']
+        try:
+            avail = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        except: return preferred[0]
+        for m in preferred:
+            if m in avail: return m
+        return avail[0] if avail else preferred[0]
     except: return None
 
 def scrape_web(url):
-    # ... (เหมือนเดิม ใช้โค้ดเดิมได้เลยเพื่อความสั้น) ...
     try:
         scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
         res = scraper.get(url, timeout=15)
         if res.status_code == 200:
             soup = BeautifulSoup(res.content, 'html.parser')
-            title = soup.title.string if soup.title else ""
-            # (ตัดสั้น)
-            return title.strip(), ""
+            title, desc = "", ""
+            # JSON-LD
+            scripts = soup.find_all('script', type='application/ld+json')
+            for script in scripts:
+                try:
+                    data = json.loads(script.string)
+                    if '@type' in data and data['@type'] == 'Product':
+                        title = data.get('name', '')
+                        desc = data.get('description', '')
+                        break
+                except: continue
+            if not title and soup.title: title = soup.title.string
+            return title.strip(), desc
         return None, "Error"
     except: return None, "Error"
 
 def generate_script(api_key, model_name, product, features, tone, url_info, image_file=None):
-    # ... (เหมือนเดิม) ...
-    contents = [f"Product: {product}. Features: {features}. Tone: {tone}. Write Thai Script + Sora Prompt."]
+    prompt_text = f"""
+    Role: Professional Ad Director & Sora AI Expert.
+    Task: Create a Thai video script and Sora Prompts for '{product}'.
+    Data: {features} {url_info} Tone: {tone}
+    
+    Output Format:
+    ## 📝 Viral Caption (Thai)
+    [Caption 2 lines]
+    [Hashtags]
+
+    ## 🎬 Script & Sora Prompts
+    (4 Scenes: Hook, Pain, Solution, CTA)
+    Format per scene:
+    ### Scene X: [Name]
+    **🗣️ Speak (Thai):** ...
+    **🎥 Sora Prompt (English - Detailed):** ```text
+    [Detailed visual description]
+    ```
+    """
+    contents = [prompt_text]
     if image_file:
-        img = Image.open(image_file)
-        contents.append(img)
+        try:
+            img = Image.open(image_file)
+            contents.append(img)
+            contents[0] += "\n\n**Vision Instruction:** Analyze the image to write accurate Sora Prompts matching the real product."
+        except: pass
+
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel(model_name)
     return model.generate_content(contents).text
@@ -144,7 +185,7 @@ if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'user_info' not in st.session_state: st.session_state.user_info = None
 
 # สถานะสำหรับการสมัครสมาชิก (Multi-step Registration)
-if 'reg_stage' not in st.session_state: st.session_state.reg_stage = 1 # 1=กรอกข้อมูล, 2=กรอก OTP
+if 'reg_stage' not in st.session_state: st.session_state.reg_stage = 1
 if 'reg_otp' not in st.session_state: st.session_state.reg_otp = None
 if 'reg_data' not in st.session_state: st.session_state.reg_data = {}
 
@@ -167,15 +208,16 @@ def login_screen():
             u = st.text_input("Username")
             p = st.text_input("Password", type="password")
             if st.form_submit_button("Log In", use_container_width=True):
-                data = login_user(u, p)
-                if data:
-                    used, left = check_trial(data[3])
-                    if used > 3: st.error("หมดอายุการใช้งาน")
-                    else:
-                        st.session_state.logged_in = True
-                        st.session_state.user_info = {"name": data[0], "email": data[2], "left": left}
-                        st.rerun()
-                else: st.error("ข้อมูลไม่ถูกต้อง")
+                with st.spinner("Checking..."):
+                    data = login_user(u, p)
+                    if data:
+                        used, left = check_trial(data[3])
+                        if used > 3: st.error("หมดอายุการใช้งาน")
+                        else:
+                            st.session_state.logged_in = True
+                            st.session_state.user_info = {"name": data[0], "email": data[2], "left": left}
+                            st.rerun()
+                    else: st.error("ข้อมูลไม่ถูกต้อง")
 
     with tab2:
         # Step 1: กรอกข้อมูล
@@ -197,8 +239,9 @@ def login_screen():
                                 if send_verification_email(new_e, otp):
                                     st.session_state.reg_otp = otp
                                     st.session_state.reg_data = {"u": new_u, "e": new_e, "p": new_p}
-                                    st.session_state.reg_stage = 2 # ไปขั้นตอนถัดไป
+                                    st.session_state.reg_stage = 2
                                     st.success("✅ ส่งรหัสแล้ว! กรุณาเช็กอีเมล")
+                                    time.sleep(1)
                                     st.rerun()
                     else:
                         st.warning("กรุณากรอกข้อมูลให้ครบ")
@@ -214,31 +257,26 @@ def login_screen():
                 with col1:
                     submit_otp = st.form_submit_button("✅ ยืนยันและสมัคร", use_container_width=True)
                 with col2:
-                    cancel = st.form_submit_button("❌ ยกเลิก/กรอกใหม่", use_container_width=True)
+                    cancel = st.form_submit_button("❌ ยกเลิก", use_container_width=True)
                 
                 if submit_otp:
                     if user_otp == st.session_state.reg_otp:
-                        # Verify ผ่าน -> บันทึกลง Google Sheet
                         d = st.session_state.reg_data
                         if register_user_final(d['u'], d['p'], d['e']):
                             st.success("🎉 สมัครสมาชิกสำเร็จ!")
-                            # Reset ค่า
                             st.session_state.reg_stage = 1
                             st.session_state.reg_otp = None
                             st.session_state.reg_data = {}
                             time.sleep(2)
                             st.rerun()
-                        else:
-                            st.error("เกิดข้อผิดพลาดในการบันทึกข้อมูล")
-                    else:
-                        st.error("❌ รหัส OTP ไม่ถูกต้อง")
+                        else: st.error("บันทึกข้อมูลไม่สำเร็จ (ลองใหม่อีกครั้ง)")
+                    else: st.error("❌ รหัส OTP ไม่ถูกต้อง")
                 
                 if cancel:
                     st.session_state.reg_stage = 1
                     st.rerun()
 
 def main_app():
-    # ... (ส่วนแอปหลักเหมือนเดิมเป๊ะๆ) ...
     info = st.session_state.user_info
     c1, c2 = st.columns([3, 1])
     with c1: st.info(f"👤 {info['name']} | ⏳ เหลือ {info['left']} วัน")
@@ -248,12 +286,48 @@ def main_app():
             st.rerun()
     
     my_api_key = st.secrets.get("GEMINI_API_KEY")
+
+    # Scraper
+    if 'scraped_title' not in st.session_state: st.session_state.scraped_title = ""
+    if 'scraped_desc' not in st.session_state: st.session_state.scraped_desc = ""
+
+    with st.expander("🔎 ดึงข้อมูลสินค้า (Optional)"):
+        col_url, col_btn = st.columns([3, 1])
+        with col_url: url = st.text_input("วางลิงก์ TikTok/Shopee")
+        with col_btn:
+            st.write(""); st.write("")
+            if st.button("ดึงข้อมูล", use_container_width=True) and url:
+                with st.spinner(".."):
+                    t, d = scrape_web(url)
+                    if t:
+                        st.session_state.scraped_title = t
+                        st.session_state.scraped_desc = d
+                        st.success("✅")
+                    else: st.warning("⚠️")
+
     with st.form("gen"):
-        p_name = st.text_input("ชื่อสินค้า")
+        st.subheader("1. ข้อมูลสินค้า")
+        p_name = st.text_input("ชื่อสินค้า", value=st.session_state.scraped_title)
+        img_file = st.file_uploader("รูปสินค้า (Vision)", type=['png','jpg','webp'])
+        if img_file: st.image(img_file, width=150)
+        
+        st.subheader("2. รายละเอียด")
+        c1, c2 = st.columns(2)
+        with c1: tone = st.selectbox("สไตล์", ["ตลก/ไวรัล", "Cinematic", "รีวิวพลีชีพ"])
+        with c2: feat = st.text_area("จุดเด่น", value=st.session_state.scraped_desc, height=100)
+        
         submit = st.form_submit_button("🚀 สร้างสคริปต์")
-        if submit and my_api_key:
-             # เรียก generate_script ตรงนี้
-             st.success("ระบบทำงานปกติ")
+        if submit:
+            if not my_api_key: st.error("❌ ไม่พบ API Key")
+            elif not p_name and not img_file: st.warning("⚠️ ใส่ชื่อสินค้าด้วย")
+            else:
+                with st.spinner("🤖 AI กำลังทำงาน..."):
+                    model = get_valid_model(my_api_key)
+                    if model:
+                        res = generate_script(my_api_key, model, p_name, feat, tone, url, img_file)
+                        st.success("เสร็จเรียบร้อย!")
+                        st.markdown(res)
+                    else: st.error("AI Error")
 
 # --- Run ---
 if st.session_state.logged_in:
