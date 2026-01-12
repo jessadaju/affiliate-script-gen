@@ -10,20 +10,19 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- 1. ตั้งค่าหน้าเว็บ ---
-st.set_page_config(page_title="Affiliate Script & Sora Gen", page_icon="🎥", layout="centered")
+st.set_page_config(page_title="Affiliate Script & Sora Gen (Pro)", page_icon="🎥", layout="centered")
 
 # --- 2. ระบบฐานข้อมูล (Google Sheets) ---
-SHEET_NAME = "user_db" # ⚠️ ตรวจสอบว่าชื่อไฟล์ Google Sheet ของคุณชื่อนี้เป๊ะๆ
+SHEET_NAME = "user_db" # ชื่อไฟล์ Google Sheet
 
 def connect_to_gsheet():
     """เชื่อมต่อ Google Sheets โดยอ่านจาก Secrets"""
     try:
-        # อ่านค่าจาก Secrets
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         
         # ตรวจสอบว่ามี Secrets หรือไม่
         if "gcp_service_account" not in st.secrets:
-            st.error("❌ ไม่พบข้อมูล Secrets กรุณาตั้งค่าใน Streamlit Cloud")
+            st.error("❌ ไม่พบข้อมูล Secrets (gcp_service_account)")
             return None
 
         creds_dict = dict(st.secrets["gcp_service_account"])
@@ -33,7 +32,6 @@ def connect_to_gsheet():
         return sheet
     except Exception as e:
         st.error(f"❌ เชื่อมต่อ Google Sheets ไม่ได้: {e}")
-        st.info("💡 คำแนะนำ: อย่าลืมกด Share ไฟล์ Google Sheet ให้กับอีเมลใน Secrets ด้วยนะครับ")
         return None
 
 def register_user(username, password, email):
@@ -42,21 +40,16 @@ def register_user(username, password, email):
     if not sheet: return False
 
     try:
-        # เช็กว่ามี Username ซ้ำไหม
-        existing_users = sheet.col_values(1) # คอลัมน์ 1 คือ Username
-        if username in existing_users:
-            return False # ชื่อซ้ำ
+        # เช็ก Username ซ้ำ
+        existing_users = sheet.col_values(1)
+        if username in existing_users: return False 
         
-        # บันทึกข้อมูลใหม่
+        # บันทึก
         hashed_pw = hashlib.sha256(password.encode()).hexdigest()
         today = datetime.datetime.now().strftime("%Y-%m-%d")
-        
-        # เพิ่มแถวใหม่ต่อท้าย (Append)
         sheet.append_row([username, hashed_pw, email, today])
         return True
-    except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการบันทึก: {e}")
-        return False
+    except: return False
 
 def login_user(username, password):
     """ล็อกอินโดยดึงข้อมูลจาก Sheet"""
@@ -64,24 +57,19 @@ def login_user(username, password):
     if not sheet: return None
 
     try:
-        # ค้นหา Username
         try:
-            cell = sheet.find(username) # หาว่า Username อยู่แถวไหน
+            cell = sheet.find(username)
         except gspread.exceptions.CellNotFound:
-            return None # หาไม่เจอ
+            return None
 
         if cell:
             row_data = sheet.row_values(cell.row)
-            # โครงสร้าง: [username, password_hash, email, start_date]
-            
-            # เช็ก Password
+            # row_data = [username, password_hash, email, start_date]
             hashed_pw = hashlib.sha256(password.encode()).hexdigest()
             if row_data[1] == hashed_pw:
-                return row_data # ส่งข้อมูลกลับไป
+                return row_data 
         return None
-    except Exception as e:
-        st.error(f"Login Error: {e}")
-        return None
+    except: return None
 
 def check_trial(start_date_str):
     """คำนวณวันทดลองใช้"""
@@ -90,14 +78,15 @@ def check_trial(start_date_str):
         now = datetime.datetime.now()
         diff = (now - start_date).days
         return diff, 3 - diff
-    except:
-        return 0, 3
+    except: return 0, 3
 
-# --- 3. ฟังก์ชัน AI ---
+# --- 3. ฟังก์ชัน AI Core System (กลับมาครบเต็มสูบ) ---
+
 def get_valid_model(api_key):
+    """หาโมเดลอัตโนมัติ"""
     try:
         genai.configure(api_key=api_key)
-        preferred = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro']
+        preferred = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-pro']
         try:
             avail = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         except: return preferred[0]
@@ -107,39 +96,85 @@ def get_valid_model(api_key):
     except: return None
 
 def scrape_web(url):
+    """ดึงข้อมูลเว็บขั้นเทพ (Cloudscraper + JSON-LD)"""
     try:
         scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
-        res = scraper.get(url, timeout=15)
-        if res.status_code == 200:
-            soup = BeautifulSoup(res.content, 'html.parser')
-            title, desc = "", ""
+        response = scraper.get(url, timeout=15)
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            final_title, final_desc = "", ""
+
+            # สูตร 1: JSON-LD
             scripts = soup.find_all('script', type='application/ld+json')
             for script in scripts:
                 try:
                     data = json.loads(script.string)
                     if '@type' in data and data['@type'] == 'Product':
-                        title = data.get('name', '')
-                        desc = data.get('description', '')
+                        final_title = data.get('name', '')
+                        final_desc = data.get('description', '')
                         break
+                    if '@type' in data and data['@type'] == 'BreadcrumbList':
+                        if 'itemListElement' in data: final_title = data['itemListElement'][-1]['item']['name']
                 except: continue
-            if not title and soup.title: title = soup.title.string
-            return title, desc
-        return None, "Error"
-    except: return None, "Error"
+
+            # สูตร 2: Open Graph
+            if not final_title:
+                og_title = soup.find('meta', property='og:title')
+                if og_title: final_title = og_title.get('content', '')
+            if not final_desc:
+                og_desc = soup.find('meta', property='og:description')
+                if og_desc: final_desc = og_desc.get('content', '')
+
+            if not final_title and soup.title: final_title = soup.title.string
+
+            clean_title = final_title.split('|')[0].split(' - ')[0].strip()
+            if clean_title: return clean_title, final_desc
+            else: return None, "เว็บป้องกันหนาแน่น ไม่พบข้อมูล"
+        else: return None, f"เข้าเว็บไม่ได้ ({response.status_code})"
+    except Exception as e: return None, f"Error: {str(e)}"
 
 def generate_script(api_key, model_name, product, features, tone, url_info, image_file=None):
-    prompt_text = f"Role: Sora AI & Ad Expert. Task: Script for '{product}'. Lang: THAI. Info: {features} {url_info} Tone: {tone}"
+    """สร้างสคริปต์ไทย + Sora Prompt + Vision"""
+    prompt_text = f"""
+    Role: ผู้กำกับภาพยนตร์โฆษณา และผู้เชี่ยวชาญด้าน Sora AI (Video Generative AI).
+    Task: วางแผนถ่ายทำคลิปวิดีโอสั้นสำหรับสินค้า: '{product}'.
+    Language: **ภาษาไทยทั้งหมด** (ทั้งบทพูด และ คำสั่งสร้างภาพ).
+    
+    ข้อมูลสินค้า: {product}
+    ข้อมูลเพิ่มเติม: {features} {url_info}
+    อารมณ์/โทน: {tone}
+    
+    Output Format:
+    ## 📝 แคปชั่น & แฮชแทค (Viral SEO)
+    [แคปชั่นภาษาไทย 2 บรรทัด เน้นหยุดนิ้วโป้ง]
+    [แฮชแทค]
+
+    ## 🎬 สคริปต์และคำสั่งสร้างภาพ (Sora AI)
+    (4 Scenes: Hook, Pain, Solution, CTA)
+    
+    Format per scene:
+    ### ฉากที่ X: [ชื่อฉาก]
+    **🗣️ บทพูด:** ...
+    **🎥 คำสั่ง Sora (Prompt):** ```text
+    [คำบรรยายภาพภาษาไทย ใส่รายละเอียดแสง มุมกล้อง การเคลื่อนไหว แบบละเอียด เพื่อให้คนนำไป Gen Video ได้เลย]
+    ```
+    """
     contents = [prompt_text]
     if image_file:
         try:
             img = Image.open(image_file)
             contents.append(img)
+            contents[0] += "\n\n**คำสั่ง Vision:** วิเคราะห์รูปภาพ แล้วเขียนคำสั่ง Sora ให้ตรงปกที่สุด (สี/ทรง/วัสดุ ต้องเป๊ะตามรูป)"
         except: pass
+
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel(model_name)
-    return model.generate_content(contents).text
+    response = model.generate_content(contents)
+    return response.text
 
-# --- 4. User Interface ---
+# --- 4. User Interface (UI) ---
+
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'user_info' not in st.session_state: st.session_state.user_info = None
 
@@ -154,14 +189,12 @@ def login_screen():
         <p>ระบบสมาชิกถาวร + ทดลองฟรี 3 วัน</p>
     </div>
     """, unsafe_allow_html=True)
-
-    # เช็กการเชื่อมต่อก่อนเลย เพื่อความชัวร์
-    if st.button("🛠️ ทดสอบการเชื่อมต่อ Google Sheets"):
-        sheet = connect_to_gsheet()
-        if sheet:
-            st.success(f"✅ เชื่อมต่อสำเร็จ! เจอไฟล์: {sheet.title}")
-        else:
-            st.error("❌ เชื่อมต่อไม่ได้ กรุณาเช็ก Secrets และการ Share ไฟล์")
+    
+    # ปุ่มเทส Connection
+    if st.button("🛠️ เช็กสถานะ Server (Google Sheets)"):
+        s = connect_to_gsheet()
+        if s: st.success("✅ Online")
+        else: st.error("❌ Offline (Check Secrets)")
 
     tab1, tab2 = st.tabs(["🔑 เข้าสู่ระบบ", "📝 สมัครสมาชิก"])
 
@@ -169,52 +202,96 @@ def login_screen():
         with st.form("login"):
             u = st.text_input("Username")
             p = st.text_input("Password", type="password")
-            if st.form_submit_button("เข้าสู่ระบบ", use_container_width=True):
-                with st.spinner("กำลังตรวจสอบ..."):
+            if st.form_submit_button("Log In", use_container_width=True):
+                with st.spinner("Logging in..."):
                     data = login_user(u, p)
                     if data:
                         used, left = check_trial(data[3])
                         if used > 3:
-                            st.error(f"หมดเวลาทดลองใช้ ({used} วัน) กรุณาต่ออายุ")
+                            st.error(f"หมดอายุ (ใช้ไป {used} วัน)")
                         else:
                             st.session_state.logged_in = True
                             st.session_state.user_info = {"name": data[0], "email": data[2], "left": left}
                             st.rerun()
                     else:
-                        st.error("ไม่พบผู้ใช้ หรือ รหัสผิด (หรือยังไม่ได้สมัคร)")
+                        st.error("ไม่พบข้อมูล หรือ รหัสผิด")
 
     with tab2:
         with st.form("reg"):
             new_u = st.text_input("Username *")
             new_e = st.text_input("Email *")
             new_p = st.text_input("Password *", type="password")
-            if st.form_submit_button("สมัครสมาชิก", use_container_width=True):
+            if st.form_submit_button("Register", use_container_width=True):
                 if new_u and new_e and new_p:
-                    with st.spinner("กำลังบันทึกลง Google Sheets..."):
+                    with st.spinner("Registering..."):
                         if register_user(new_u, new_p, new_e):
-                            st.success("✅ สมัครสำเร็จ! ข้อมูลถูกบันทึกลงระบบแล้ว")
-                            st.info("กรุณากลับไปหน้า 'เข้าสู่ระบบ' เพื่อใช้งาน")
+                            st.success("✅ สมัครสำเร็จ! ไปหน้า Login ได้เลย")
                         else:
-                            st.warning("สมัครไม่สำเร็จ (ชื่ออาจซ้ำ หรือเชื่อมต่อไม่ได้)")
+                            st.error("สมัครไม่ผ่าน (ชื่อซ้ำ หรือระบบมีปัญหา)")
                 else:
-                    st.warning("กรอกให้ครบนะ")
+                    st.warning("กรอกให้ครบครับ")
 
 def main_app():
+    # Header
     info = st.session_state.user_info
-    st.info(f"👤 {info['name']} ({info['email']}) | ⏳ เหลือ {info['left']} วัน")
-    if st.button("Logout"):
-        st.session_state.logged_in = False
-        st.rerun()
-        
-    my_api_key = st.secrets.get("GEMINI_API_KEY")
-    with st.form("gen"):
-        p_name = st.text_input("ชื่อสินค้า")
-        # (เพิ่มส่วน upload รูปและ inputs อื่นๆ ตรงนี้ตามเดิม)
-        submit = st.form_submit_button("🚀 สร้างสคริปต์")
-        if submit:
-             st.success("ทำงานเรียบร้อย!")
-             # เรียก generate_script ที่นี่
+    c1, c2 = st.columns([3, 1])
+    with c1: st.info(f"👤 {info['name']} | ⏳ เหลือ {info['left']} วัน")
+    with c2: 
+        if st.button("Logout"):
+            st.session_state.logged_in = False
+            st.rerun()
 
+    # API Key
+    my_api_key = st.secrets.get("GEMINI_API_KEY")
+
+    # Scraper Section
+    if 'scraped_title' not in st.session_state: st.session_state.scraped_title = ""
+    if 'scraped_desc' not in st.session_state: st.session_state.scraped_desc = ""
+
+    with st.expander("🔎 ดึงข้อมูลสินค้า (Optional)"):
+        col_url, col_btn = st.columns([3, 1])
+        with col_url: url = st.text_input("วางลิงก์ TikTok/Shopee")
+        with col_btn:
+            st.write(""); st.write("")
+            if st.button("ดึงข้อมูล", use_container_width=True) and url:
+                with st.spinner("เจาะระบบ..."):
+                    t, d = scrape_web(url)
+                    if t:
+                        st.session_state.scraped_title = t
+                        st.session_state.scraped_desc = d
+                        st.success("✅")
+                    else: st.warning("⚠️")
+
+    # Main Form
+    with st.form("gen_form"):
+        st.subheader("1. ข้อมูลสินค้า")
+        p_name = st.text_input("ชื่อสินค้า", value=st.session_state.scraped_title)
+        
+        st.markdown("**📸 อัปโหลดรูป (สำคัญสำหรับ Sora)**")
+        img_file = st.file_uploader("เลือกรูป", type=['png', 'jpg', 'jpeg', 'webp'])
+        if img_file: st.image(img_file, width=150)
+        
+        st.subheader("2. รายละเอียด")
+        c1, c2 = st.columns(2)
+        with c1: tone = st.selectbox("สไตล์", ["ตลก/ไวรัล", "Cinematic สวยงาม", "รีวิวพลีชีพ", "Vlog เล่าเรื่อง"])
+        with c2: feat = st.text_area("จุดเด่น", value=st.session_state.scraped_desc, height=100)
+        
+        submit = st.form_submit_button("🚀 สร้างสคริปต์ + Sora Prompt", use_container_width=True)
+
+    if submit:
+        if not my_api_key: st.error("❌ ไม่พบ API Key (กรุณาเช็ก Secrets)")
+        elif not p_name and not img_file: st.warning("⚠️ กรุณาใส่ข้อมูล")
+        else:
+            with st.spinner("🤖 AI กำลังเขียนบทและออกแบบฉาก..."):
+                model = get_valid_model(my_api_key)
+                if model:
+                    res = generate_script(my_api_key, model, p_name, feat, tone, url, img_file)
+                    st.success("เสร็จเรียบร้อย!")
+                    st.markdown("---")
+                    st.markdown(res)
+                else: st.error("เชื่อมต่อ AI ไม่ได้")
+
+# --- Main Control ---
 if st.session_state.logged_in:
     main_app()
 else:
