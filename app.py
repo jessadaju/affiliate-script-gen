@@ -17,9 +17,9 @@ import time
 # --- 1. ตั้งค่าหน้าเว็บ ---
 st.set_page_config(page_title="Affiliate Gen Pro", page_icon="🔒", layout="centered")
 
-# --- 2. ระบบอีเมล (เปลี่ยนเป็นภาษาอังกฤษ 100% แก้ Error) ---
+# --- 2. ระบบอีเมล (100% English to fix ASCII Error) ---
 def send_verification_email(to_email, otp_code):
-    """ส่งอีเมล OTP (English Content to prevent ASCII Error)"""
+    """ส่งอีเมล OTP (ภาษาอังกฤษล้วน เพื่อแก้ปัญหา Error)"""
     try:
         if "email" not in st.secrets:
             st.error("Error: Email secrets not found.")
@@ -28,7 +28,7 @@ def send_verification_email(to_email, otp_code):
         sender_email = st.secrets["email"]["sender_email"]
         sender_password = st.secrets["email"]["sender_password"]
         
-        # ✅ ใช้ภาษาอังกฤษล้วน เพื่อความชัวร์เรื่อง Encoding
+        # ✅ ใช้ภาษาอังกฤษล้วน (ปลอดภัยที่สุด)
         subject = "Verification Code (OTP) - Affiliate Gen Pro"
         body = f"""
         Hello,
@@ -41,7 +41,7 @@ def send_verification_email(to_email, otp_code):
         Thank you.
         """
         
-        # ส่งเป็น UTF-8 ตามมาตรฐาน แต่เนื้อหาเป็น English ปลอดภัยที่สุด
+        # บังคับ Encoding เป็น UTF-8 (กันเหนียว)
         msg = MIMEText(body, 'plain', 'utf-8')
         msg['Subject'] = Header(subject, 'utf-8')
         msg['From'] = sender_email
@@ -145,7 +145,6 @@ def scrape_web(url):
     except: return None, "Error"
 
 def generate_script(api_key, model_name, product, features, tone, url_info, image_file=None):
-    # Prompt นี้สามารถคงภาษาไทยไว้ได้ เพราะไม่ได้ส่งผ่าน Email Server
     prompt_text = f"""
     Role: Professional Ad Director & Sora AI Expert.
     Task: Create a Thai video script and Sora Prompts for '{product}'.
