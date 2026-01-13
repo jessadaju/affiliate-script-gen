@@ -12,14 +12,14 @@ import time
 import os
 
 # --- 1. ตั้งค่าหน้าเว็บ ---
-st.set_page_config(page_title="Affiliate Gen Pro (AI Brain)", page_icon="🧠", layout="centered")
+st.set_page_config(page_title="Affiliate Gen Pro (Easy Copy)", page_icon="⚡", layout="centered")
 
 # --- 2. Config & Constants ---
 VALID_INVITE_CODES = ["VIP2024", "EARLYBIRD", "ADMIN"]
 SHEET_NAME = "user_db"
 ADMIN_USERNAME = "admin"
 
-# --- 3. Database Functions (เหมือนเดิม) ---
+# --- 3. Database Functions ---
 def connect_to_gsheet():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -89,13 +89,12 @@ def check_status(start_date_str, plan_days_str):
         return diff, remaining 
     except: return 0, 0
 
-# --- 4. AI Brain (ส่วนที่ฉลาดขึ้น 🧠) ---
+# --- 4. AI Brain (JSON Mode for Easy Copy) ---
 
 def get_valid_model(api_key):
     try:
         genai.configure(api_key=api_key)
-        # ใช้ 1.5 Pro เป็นตัวหลักเพราะฉลาดกว่า Flash มาก (แต่ถ้าช้าค่อยถอยไป Flash)
-        preferred = ['models/gemini-1.5-pro', 'models/gemini-1.5-flash']
+        preferred = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro']
         try:
             avail = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         except: return preferred[0]
@@ -105,7 +104,6 @@ def get_valid_model(api_key):
     except: return None
 
 def scrape_web(url):
-    # เพิ่ม User-Agent ให้เนียนขึ้น
     try:
         scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
         res = scraper.get(url, timeout=15)
@@ -126,76 +124,52 @@ def scrape_web(url):
         return None, "Error"
     except: return None, "Error"
 
-def generate_smart_script(api_key, model_name, product, features, tone, target_audience, platform, url_info, image_file=None):
+def generate_smart_script_json(api_key, model_name, product, features, tone, target_audience, platform, url_info, image_file=None):
     """
-    ฟังก์ชันสมองกล:
-    1. วิเคราะห์รูปภาพ (ถ้ามี) หาจุดขายทางสายตา
-    2. วิเคราะห์กลุ่มเป้าหมาย (Target Audience)
-    3. สร้าง 3 Hooks เพื่อเลือกสิ่งที่ดีที่สุด
-    4. เขียน Prompt สำหรับ Sora แบบละเอียด (Cinematic)
+    Generate script in JSON format for easy UI parsing.
     """
     
-    # 🧠 Super Prompt Engineering
+    # Prompt สั่งให้ตอบเป็น JSON เท่านั้น
     prompt_text = f"""
-    Act as a World-Class Creative Director & Viral Marketing Psychologist.
-    You are creating a short video script for '{product}'.
+    Act as a Creative Director. Create a video script for '{product}'.
     
-    ## 🎯 Strategy Input
-    - **Platform:** {platform} (Optimize for this algorithm)
-    - **Target Audience:** {target_audience} (Use language that resonates with them)
-    - **Tone:** {tone}
-    - **Product Data:** {features} {url_info}
+    Context:
+    - Platform: {platform}
+    - Target: {target_audience}
+    - Tone: {tone}
+    - Data: {features} {url_info}
     
-    ## 🖼️ Visual Analysis Instruction
-    If an image is provided, analyze it deeply:
-    - What is the material? (Matte, Glossy, Fabric textue?)
-    - What is the lighting vibe?
-    - **Crucial:** Ensure the 'Sora Prompts' describe the product EXACTLY as seen in the image to maintain consistency.
+    If image provided: Analyze texture/lighting for Sora prompts.
 
-    ## 📝 Task Requirements
-    1. **Psychological Analysis:** Briefly explain *why* this product solves the target audience's pain point.
-    2. **3 Viral Hooks:** Create 3 different opening sentences (3 seconds) to stop the scroll (e.g., Shocking, Question, Story).
-    3. **Main Script (Thai):** A cohesive story using the best hook.
-    4. **Sora Prompts (English - Technical):** - Must use terms like: "Cinematic lighting", "Macro shot", "4k", "Depth of field".
-       - Describe camera movement (e.g., "Slow pan", "Dolly zoom").
-    
-    ## 📤 Output Format (Strictly follow this)
-    
-    ### 🧠 AI Strategy Note
-    *Thinking process: [Brief explanation of the strategy used]*
-
-    ### 🎣 3 Hooks Options (Choose one)
-    1. **Shocking:** ...
-    2. **Relatable:** ...
-    3. **Benefit-First:** ...
-
-    ### 🎬 Final Video Script (Thai)
-    **Caption:** [SEO Optimized Caption]
-    **Hashtags:** [Trending Tags]
-
-    #### Scene 1: The Hook (0-3s)
-    **🗣️ Speak:** [Choose best hook]
-    **🎥 Sora Prompt:** ```text
-    [Technical English Prompt: Subject + Action + Lighting + Camera + Style]
-    ```
-
-    #### Scene 2: The Problem/Agitation (3-10s)
-    **🗣️ Speak:** ...
-    **🎥 Sora Prompt:** ```text
-    [...]
-    ```
-
-    #### Scene 3: The Solution/Product Hero (10-20s)
-    **🗣️ Speak:** ...
-    **🎥 Sora Prompt:** ```text
-    [...]
-    ```
-
-    #### Scene 4: Call to Action (20-30s)
-    **🗣️ Speak:** ...
-    **🎥 Sora Prompt:** ```text
-    [...]
-    ```
+    **IMPORTANT:** Return ONLY valid JSON with this structure:
+    {{
+      "strategy": "Brief explanation of why this angle works",
+      "hooks": ["Hook option 1", "Hook option 2", "Hook option 3"],
+      "caption": "Viral caption text",
+      "hashtags": "#tag1 #tag2 #tag3",
+      "scenes": [
+        {{
+          "scene_name": "Scene 1: Hook",
+          "script_thai": "Thai spoken script...",
+          "sora_prompt": "English visual prompt..."
+        }},
+        {{
+          "scene_name": "Scene 2: Problem",
+          "script_thai": "Thai spoken script...",
+          "sora_prompt": "English visual prompt..."
+        }},
+        {{
+          "scene_name": "Scene 3: Solution",
+          "script_thai": "Thai spoken script...",
+          "sora_prompt": "English visual prompt..."
+        }},
+        {{
+          "scene_name": "Scene 4: CTA",
+          "script_thai": "Thai spoken script...",
+          "sora_prompt": "English visual prompt..."
+        }}
+      ]
+    }}
     """
     
     contents = [prompt_text]
@@ -203,13 +177,16 @@ def generate_smart_script(api_key, model_name, product, features, tone, target_a
         try:
             img = Image.open(image_file)
             contents.append(img)
-            contents[0] += "\n\n**[IMAGE ATTACHED]** Analyze this image for the visual prompts."
+            contents[0] += "\n\n**[IMAGE ATTACHED]** Base visual prompts on this image."
         except: pass
 
     genai.configure(api_key=api_key)
-    # พยายามใช้ Model Pro เพื่อความฉลาดสูงสุด
-    model = genai.GenerativeModel(model_name)
-    return model.generate_content(contents).text
+    
+    # บังคับ JSON Mode (เฉพาะ Gemini 1.5 ขึ้นไป)
+    model = genai.GenerativeModel(model_name, generation_config={"response_mime_type": "application/json"})
+    
+    response = model.generate_content(contents)
+    return response.text
 
 # --- 5. UI Logic ---
 
@@ -238,7 +215,7 @@ def admin_dashboard():
             else: st.error("User not found")
 
 def login_screen():
-    st.markdown("<h1 style='text-align:center;'>🧠 Affiliate Gen Pro (AI Brain)</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align:center;'>⚡ Affiliate Gen Pro</h1>", unsafe_allow_html=True)
     t1, t2 = st.tabs(["Login", "Register"])
     with t1:
         with st.form("l"):
@@ -266,7 +243,7 @@ def main_app():
     if i['name'] == ADMIN_USERNAME: admin_dashboard()
     if i['exp'] and i['name'] != ADMIN_USERNAME: renewal_screen(); return
 
-    st.info(f"👤 {i['name']} | 🧠 AI Smart Mode | ⏳ {i['left']} Days")
+    st.info(f"👤 {i['name']} | ⏳ {i['left']} Days Left")
     if st.button("Logout"): st.session_state.logged_in = False; st.rerun()
     
     key = st.secrets.get("GEMINI_API_KEY")
@@ -284,29 +261,65 @@ def main_app():
     with st.form("gen"):
         st.subheader("1. ข้อมูลสินค้า")
         pn = st.text_input("ชื่อสินค้า", value=st.session_state.s_t)
-        img = st.file_uploader("รูปสินค้า (ให้ AI วิเคราะห์)", type=['png','jpg','webp'])
+        img = st.file_uploader("รูปสินค้า", type=['png','jpg','webp'])
         if img: st.image(img, width=150)
         
-        st.subheader("2. กลยุทธ์ (AI Strategy)")
+        st.subheader("2. กลยุทธ์")
         c1, c2 = st.columns(2)
         with c1: 
-            tone = st.selectbox("โทน/อารมณ์", ["ตลก/ไวรัล (Funny)", "หรูหรา/พรีเมียม (Luxury)", "เป็นกันเอง/เพื่อนสาว (Friendly)", "ดราม่า/เล่าเรื่อง (Storytelling)"])
-            platform = st.selectbox("แพลตฟอร์ม", ["TikTok (เน้นเร็ว/เพลง)", "Facebook Reels (เน้นคนดูโต)", "YouTube Shorts (เน้นข้อมูล)"])
+            tone = st.selectbox("โทน", ["ตลก/ไวรัล", "หรูหรา", "เพื่อนสาว", "ดราม่า"])
+            platform = st.selectbox("แพลตฟอร์ม", ["TikTok", "Reels", "Shorts"])
         with c2: 
-            # เพิ่มช่องกลุ่มเป้าหมาย เพื่อให้ AI แม่นยำขึ้น
-            target = st.text_input("กลุ่มเป้าหมาย (Target Audience)", placeholder="เช่น แม่บ้าน, วัยรุ่น, คนทำงานออฟฟิศ")
-            feat = st.text_area("จุดเด่นสินค้า", value=st.session_state.s_d, height=100)
+            target = st.text_input("กลุ่มเป้าหมาย", placeholder="เช่น แม่บ้าน, นร.")
+            feat = st.text_area("จุดเด่น", value=st.session_state.s_d, height=100)
         
-        if st.form_submit_button("🧠 ใช้สมอง AI สร้างสคริปต์"):
+        if st.form_submit_button("⚡ สร้างสคริปต์ (แบบก๊อปง่าย)"):
             if key:
                 if not pn: st.warning("ใส่ชื่อสินค้าหน่อยครับ")
                 else:
-                    with st.spinner("🤖 AI กำลังวิเคราะห์จิตวิทยาและเขียนบท..."):
+                    with st.spinner("🤖 AI กำลังแยกชิ้นส่วนข้อมูล..."):
                         model = get_valid_model(key)
-                        # เรียกฟังก์ชันใหม่ generate_smart_script
-                        res = generate_smart_script(key, model, pn, feat, tone, target, platform, url, img)
-                        st.success("เสร็จสิ้น!")
-                        st.markdown(res)
+                        json_res = generate_smart_script_json(key, model, pn, feat, tone, target, platform, url, img)
+                        
+                        # Parse JSON
+                        try:
+                            data = json.loads(json_res)
+                            
+                            st.success("เสร็จสิ้น! กดปุ่ม Copy ที่มุมขวาบนของแต่ละกล่องได้เลย")
+                            st.markdown("---")
+                            
+                            # 1. Strategy
+                            st.info(f"🧠 **AI Strategy:** {data.get('strategy', '')}")
+                            
+                            # 2. Caption (Copyable)
+                            st.subheader("📝 Caption & Hashtags")
+                            full_caption = f"{data.get('caption', '')}\n\n{data.get('hashtags', '')}"
+                            st.code(full_caption, language='text') # ใช้ st.code เพื่อให้มีปุ่ม copy
+                            
+                            # 3. Hooks
+                            with st.expander("🎣 ทางเลือกเปิดคลิป (Hooks)", expanded=True):
+                                for idx, hook in enumerate(data.get('hooks', [])):
+                                    st.write(f"**Option {idx+1}:**")
+                                    st.code(hook, language='text')
+
+                            # 4. Scenes (Copyable Prompts)
+                            st.subheader("🎬 Video Script & Sora Prompts")
+                            for scene in data.get('scenes', []):
+                                with st.container():
+                                    st.markdown(f"**{scene.get('scene_name', 'Scene')}**")
+                                    c1, c2 = st.columns([1, 1])
+                                    with c1:
+                                        st.caption("🗣️ บทพูด (ไทย)")
+                                        st.info(scene.get('script_thai', '-'))
+                                    with c2:
+                                        st.caption("🎥 Sora Prompt (English - กด Copy มุมขวาบน)")
+                                        # กล่องนี้แหละที่ลูกค้าต้องการ!
+                                        st.code(scene.get('sora_prompt', ''), language="text")
+                                    st.markdown("---")
+                                    
+                        except Exception as e:
+                            st.error(f"เกิดข้อผิดพลาดในการแปลผล JSON: {e}")
+                            st.text(json_res) # Show raw if error
 
 if st.session_state.logged_in: main_app()
 else: login_screen()
