@@ -1,1 +1,2 @@
 ffmpeg
+opencv-python-headless
