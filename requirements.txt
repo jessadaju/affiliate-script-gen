@@ -7,5 +7,5 @@ gspread
 oauth2client
 moviepy
 opencv-python-headless
-numpy
 streamlit-drawable-canvas
+numpy
