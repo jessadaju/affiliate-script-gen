@@ -3,7 +3,7 @@ import google.generativeai as genai
 import cloudscraper
 from bs4 import BeautifulSoup
 import json
-from PIL import Image
+from PIL import Image, ImageDraw
 import datetime
 import hashlib
 import gspread
@@ -16,8 +16,8 @@ import cv2
 import numpy as np
 from streamlit_drawable_canvas import st_canvas
 
-# --- 1. ตั้งค่าหน้าเว็บ ---
-st.set_page_config(page_title="Affiliate Gen Pro (Ultimate)", page_icon="💎", layout="centered")
+# --- 1. ตั้งค่าหน้าเว็บ (Layout Wide เพื่อให้วาดรูปได้กว้างขึ้น) ---
+st.set_page_config(page_title="Affiliate Gen Pro (Precision)", page_icon="🎯", layout="wide")
 
 # --- 2. Config & Constants ---
 VALID_INVITE_CODES = ["VIP2024", "EARLYBIRD", "ADMIN"]
@@ -155,14 +155,13 @@ def extract_frame_at_time(video_path, seconds):
     except: return None, 0, 0, 0
 
 def process_video_with_mask(video_path, mask_image_data, quality_mode="High"):
-    """
-    รับ Mask จาก Canvas แล้ว Inpaint วิดีโอ
-    """
+    """รับ Mask จาก Canvas แล้ว Inpaint วิดีโอ"""
     try:
         clip = VideoFileClip(video_path)
         
-        # เตรียม Mask
+        # Resize Mask ให้เท่ากับขนาดวิดีโอ (รองรับทั้งกรณี Canvas เล็กหรือใหญ่)
         mask_resized = cv2.resize(mask_image_data.astype('uint8'), (clip.w, clip.h))
+        
         alpha_channel = mask_resized[:, :, 3] 
         _, binary_mask = cv2.threshold(alpha_channel, 1, 255, cv2.THRESH_BINARY)
         kernel = np.ones((5,5), np.uint8)
@@ -171,7 +170,6 @@ def process_video_with_mask(video_path, mask_image_data, quality_mode="High"):
         def frame_processor(get_frame, t):
             frame = get_frame(t).copy()
             frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            # Inpainting Telea
             inpainted = cv2.inpaint(frame_bgr, binary_mask, 3, cv2.INPAINT_TELEA)
             return cv2.cvtColor(inpainted, cv2.COLOR_BGR2RGB)
 
@@ -196,12 +194,10 @@ def process_video_with_mask(video_path, mask_image_data, quality_mode="High"):
 # --- 6. UI Logic ---
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'user_info' not in st.session_state: st.session_state.user_info = None
-
-# State สำหรับ Video Player
 if 'current_time' not in st.session_state: st.session_state.current_time = 0.0
 
 def login_screen():
-    st.markdown("<h1 style='text-align:center;'>🎨 Affiliate Gen Pro</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align:center;'>🎯 Affiliate Gen Pro</h1>", unsafe_allow_html=True)
     t1, t2 = st.tabs(["Login", "Register"])
     with t1:
         with st.form("l"):
@@ -224,58 +220,51 @@ def login_screen():
 
 def main_app():
     i = st.session_state.user_info
-    if i.get('exp'): st.error("หมดเวลาทดลองใช้ กรุณาต่ออายุ"); return
+    if i.get('exp'): st.error("หมดอายุการใช้งาน"); return
 
-    st.info(f"👤 {i['name']} | ⏳ เหลือ {i['left']} วัน")
+    st.info(f"👤 {i['name']} | ⏳ {i['left']} Days Left")
     if st.button("Logout"): st.session_state.logged_in = False; st.rerun()
     
     key = st.secrets.get("GEMINI_API_KEY")
     
-    tab_gen, tab_vid = st.tabs(["🚀 AI Script Generator", "🎨 Pen Tool Remover"])
+    tab_gen, tab_vid = st.tabs(["🚀 AI Script", "🎨 Pen Tool (Original)"])
     
-    # --- Tab 1: AI Generator ---
+    # --- Tab 1: AI ---
     with tab_gen:
         if 's_t' not in st.session_state: st.session_state.s_t = ""
-        if 's_d' not in st.session_state: st.session_state.s_d = ""
-        
-        with st.expander("🔎 ดึงข้อมูลสินค้า"):
+        with st.expander("🔎 Scrape Data"):
             url = st.text_input("URL"); 
             if st.button("Scrape") and url:
                 t, d = scrape_web(url)
                 if t: st.session_state.s_t = t; st.session_state.s_d = d; st.success("✅")
 
         with st.form("gen"):
-            st.subheader("1. ข้อมูลสินค้า")
-            pn = st.text_input("ชื่อสินค้า", value=st.session_state.s_t)
-            img = st.file_uploader("รูปสินค้า", type=['png','jpg','webp'])
+            st.subheader("1. Product Info")
+            pn = st.text_input("Name", value=st.session_state.s_t)
+            img = st.file_uploader("Image", type=['png','jpg','webp'])
             if img: st.image(img, width=150)
             
             c1, c2 = st.columns(2)
-            with c1: 
-                tone = st.selectbox("โทน", ["ตลก/ไวรัล", "หรูหรา", "เพื่อนสาว", "ดราม่า"])
-                platform = st.selectbox("แพลตฟอร์ม", ["TikTok", "Reels", "Shorts"])
-            with c2: 
-                target = st.text_input("กลุ่มเป้าหมาย", placeholder="เช่น แม่บ้าน")
-                feat = st.text_area("จุดเด่น", value=st.session_state.s_d, height=100)
+            with c1: tone = st.selectbox("Tone", ["Viral", "Luxury", "Friendly"])
+            with c2: target = st.text_input("Target", placeholder="e.g. Students")
+            feat = st.text_area("Features", value=st.session_state.get('s_d',''), height=100)
             
-            if st.form_submit_button("⚡ สร้างสคริปต์ (JSON)"):
+            if st.form_submit_button("⚡ Generate Script"):
                 if key and pn:
-                    with st.spinner("🤖 AI Thinking..."):
-                        model = get_valid_model(key)
-                        json_res = generate_smart_script_json(key, model, pn, feat, tone, target, platform, url, img)
+                    with st.spinner("AI Generating..."):
+                        m = get_valid_model(key)
+                        res = generate_smart_script_json(key, m, pn, feat, tone, target, "TikTok", url, img)
                         try:
-                            data = json.loads(json_res)
-                            st.success("เสร็จสิ้น!")
-                            st.info(f"🧠 **Strategy:** {data.get('strategy', '')}")
-                            st.code(f"{data.get('caption', '')}\n\n{data.get('hashtags', '')}", language='text')
-                            for s in data.get('scenes', []):
-                                st.code(s.get('sora_prompt'), language="text")
+                            d = json.loads(res)
+                            st.success("Success!")
+                            st.code(d.get('caption'), language='text')
+                            for s in d.get('scenes', []): st.code(s.get('sora_prompt'), language="text")
                         except: st.error("JSON Error")
 
-    # --- Tab 2: Pen Tool Remover ---
+    # --- Tab 2: Pen Tool (Original Size Supported) ---
     with tab_vid:
-        st.header("🎨 Manual Pen Remover")
-        st.caption("วาดระบายสีทับส่วนที่ต้องการลบ (Freehand)")
+        st.header("🎨 Manual Pen Remover (Precision Mode)")
+        st.caption("วาด Mask ทับ Watermark บนวิดีโอ (เลือกโหมด Original เพื่อความแม่นยำ)")
         
         uploaded_video = st.file_uploader("Upload Video", type=["mp4", "mov"])
         
@@ -284,79 +273,69 @@ def main_app():
             tfile.write(uploaded_video.read())
             video_path = tfile.name
             
-            # Show Original Video
-            st.subheader("📺 วิดีโอต้นฉบับ")
-            st.video(video_path)
-            
             # Extract info
             _, vid_w, vid_h, vid_dur = extract_frame_at_time(video_path, 0)
             
-            st.markdown("### 1️⃣ เลือกเฟรมเพื่อวาด Mask")
-            
-            # --- ปุ่ม Forward / Backward ---
-            col_nav1, col_nav2, col_nav3 = st.columns([1, 4, 1])
-            with col_nav1:
-                if st.button("⏪ -1s"):
-                    st.session_state.current_time = max(0, st.session_state.current_time - 1)
-            with col_nav2:
-                time_sel = st.slider("Timeline (วินาที)", 0.0, float(vid_dur), st.session_state.current_time, 0.1, key="time_slider")
+            # --- 1. Navigation ---
+            st.markdown("### 1️⃣ เลือกเฟรมที่จะวาด")
+            c_nav1, c_nav2, c_nav3 = st.columns([1, 4, 1])
+            with c_nav1:
+                if st.button("⏪ -1s"): st.session_state.current_time = max(0, st.session_state.current_time - 1)
+            with c_nav2:
+                time_sel = st.slider("Time (sec)", 0.0, float(vid_dur), st.session_state.current_time, 0.1)
                 st.session_state.current_time = time_sel
-            with col_nav3:
-                if st.button("⏩ +1s"):
-                    st.session_state.current_time = min(vid_dur, st.session_state.current_time + 1)
+            with c_nav3:
+                if st.button("⏩ +1s"): st.session_state.current_time = min(vid_dur, st.session_state.current_time + 1)
             
-            # --- Canvas ---
+            # --- 2. Canvas Mode Selection ---
+            st.markdown("### 2️⃣ เลือกโหมดแสดงผล (Canvas)")
+            view_mode = st.radio("ความละเอียด:", ["Fit Screen (แนะนำสำหรับจอเล็ก)", "Original 1:1 (แม่นยำสูงสุด)"], horizontal=True)
+            
             frame_img, _, _, _ = extract_frame_at_time(video_path, st.session_state.current_time)
             
             if frame_img:
-                st.markdown("### 2️⃣ วาดทับ Watermark (ระบายสีแดง)")
-                
-                # 1. คำนวณขนาด Canvas
-                canvas_width = 600
-                aspect_ratio = vid_h / vid_w
-                canvas_height = int(canvas_width * aspect_ratio)
+                # คำนวณขนาด Canvas ตามโหมดที่เลือก
+                if view_mode == "Original 1:1 (แม่นยำสูงสุด)":
+                    canvas_width = vid_w
+                    canvas_height = vid_h
+                    frame_for_canvas = frame_img # ไม่ย่อ ส่งภาพเต็มไปเลย
+                    st.info(f"🔍 คุณกำลังวาดบนขนาดจริง: {vid_w}x{vid_h} (อาจต้องเลื่อน Scrollbar)")
+                else:
+                    # โหมดย่อ (Fit Screen)
+                    canvas_width = 800 # ขยายให้ใหญ่ขึ้นกว่าเดิมหน่อย
+                    aspect_ratio = vid_h / vid_w
+                    canvas_height = int(canvas_width * aspect_ratio)
+                    frame_for_canvas = frame_img.resize((canvas_width, canvas_height))
+                    st.info(f"📱 โหมดย่อส่วน: {canvas_width}x{canvas_height} (ระบบจะคำนวณสเกลกลับให้เอง)")
 
-                # ✅ [FIX] ย่อภาพให้เท่ากับ Canvas ก่อนส่งเข้าไป
-                # ถ้าไม่ย่อ จะเกิด AttributeError ใน streamlit-drawable-canvas
-                frame_for_canvas = frame_img.resize((canvas_width, canvas_height))
-
-                # 2. ตัววาด Canvas
+                # Canvas
                 canvas_result = st_canvas(
                     fill_color="rgba(255, 0, 0, 0.5)",
-                    stroke_width=st.slider("ขนาดหัวปากกา", 5, 50, 20),
+                    stroke_width=st.slider("หัวปากกา", 5, 100, 20),
                     stroke_color="rgba(255, 0, 0, 1)",
-                    background_image=frame_for_canvas, # ใช้ภาพที่ย่อแล้ว
+                    background_image=frame_for_canvas,
                     update_streamlit=True,
                     height=canvas_height,
                     width=canvas_width,
                     drawing_mode="freedraw",
-                    key="canvas",
+                    key=f"canvas_{view_mode}", # เปลี่ยน key เพื่อให้ canvas รีเซ็ตเมื่อเปลี่ยนโหมด
                 )
                 
                 st.markdown("---")
                 st.markdown("### 3️⃣ ประมวลผล")
-                quality = st.radio("คุณภาพ", ["Normal", "High (Slow)"], index=0)
+                quality = st.radio("Quality", ["Normal", "High (Slow)"], index=0)
                 
-                if st.button("✨ เริ่มลบ (Inpaint)"):
+                if st.button("✨ Start Inpainting"):
                     if canvas_result.image_data is not None:
-                        with st.spinner("⏳ กำลังลบตามรอยปากกา... (Telea Inpainting)"):
-                            # ส่งข้อมูลที่วาดไปประมวลผล (ฟังก์ชัน process_video_with_mask จะขยาย Mask กลับให้เอง)
+                        with st.spinner("⏳ Processing..."):
                             out_path = process_video_with_mask(video_path, canvas_result.image_data, quality)
-                            
                             if out_path:
-                                st.success("✅ เสร็จแล้ว!")
-                                
-                                # Show Processed Video
-                                st.subheader("✨ ผลลัพธ์")
+                                st.success("✅ Done!")
                                 st.video(out_path)
-                                
                                 with open(out_path, "rb") as f:
-                                    st.download_button("⬇️ Download", f, file_name="clean_video.mp4")
-                            else:
-                                st.error("Error Processing")
-                    else:
-                        st.warning("กรุณาวาดทับส่วนที่ต้องการลบก่อนครับ")
+                                    st.download_button("⬇️ Save Video", f, file_name="clean_video.mp4")
+                            else: st.error("Error Processing")
+                    else: st.warning("Please draw mask first")
 
 if st.session_state.logged_in: main_app()
 else: login_screen()
-
