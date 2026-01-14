@@ -1,4 +1,4 @@
-streamlit
+streamlit==1.38.0
 google-generativeai>=0.8.3
 cloudscraper
 beautifulsoup4
@@ -9,3 +9,4 @@ moviepy
 opencv-python-headless
 streamlit-drawable-canvas
 numpy
+
