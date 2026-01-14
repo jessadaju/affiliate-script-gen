@@ -10,9 +10,11 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import time
 import os
+import tempfile
+from moviepy.editor import VideoFileClip, CompositeVideoClip
 
 # --- 1. ตั้งค่าหน้าเว็บ ---
-st.set_page_config(page_title="Affiliate Gen Pro (Easy Copy)", page_icon="⚡", layout="centered")
+st.set_page_config(page_title="Affiliate Gen Pro (Video Max)", page_icon="🎬", layout="centered")
 
 # --- 2. Config & Constants ---
 VALID_INVITE_CODES = ["VIP2024", "EARLYBIRD", "ADMIN"]
@@ -89,8 +91,7 @@ def check_status(start_date_str, plan_days_str):
         return diff, remaining 
     except: return 0, 0
 
-# --- 4. AI Brain (JSON Mode for Easy Copy) ---
-
+# --- 4. AI & Scraper Functions ---
 def get_valid_model(api_key):
     try:
         genai.configure(api_key=api_key)
@@ -125,94 +126,134 @@ def scrape_web(url):
     except: return None, "Error"
 
 def generate_smart_script_json(api_key, model_name, product, features, tone, target_audience, platform, url_info, image_file=None):
-    """
-    Generate script in JSON format for easy UI parsing.
-    """
-    
-    # Prompt สั่งให้ตอบเป็น JSON เท่านั้น
     prompt_text = f"""
     Act as a Creative Director. Create a video script for '{product}'.
-    
-    Context:
-    - Platform: {platform}
-    - Target: {target_audience}
-    - Tone: {tone}
-    - Data: {features} {url_info}
-    
+    Context: Platform: {platform}, Target: {target_audience}, Tone: {tone}, Data: {features} {url_info}
     If image provided: Analyze texture/lighting for Sora prompts.
-
     **IMPORTANT:** Return ONLY valid JSON with this structure:
     {{
-      "strategy": "Brief explanation of why this angle works",
-      "hooks": ["Hook option 1", "Hook option 2", "Hook option 3"],
-      "caption": "Viral caption text",
-      "hashtags": "#tag1 #tag2 #tag3",
+      "strategy": "Brief explanation",
+      "hooks": ["Hook 1", "Hook 2", "Hook 3"],
+      "caption": "Viral caption",
+      "hashtags": "#tag1 #tag2",
       "scenes": [
-        {{
-          "scene_name": "Scene 1: Hook",
-          "script_thai": "Thai spoken script...",
-          "sora_prompt": "English visual prompt..."
-        }},
-        {{
-          "scene_name": "Scene 2: Problem",
-          "script_thai": "Thai spoken script...",
-          "sora_prompt": "English visual prompt..."
-        }},
-        {{
-          "scene_name": "Scene 3: Solution",
-          "script_thai": "Thai spoken script...",
-          "sora_prompt": "English visual prompt..."
-        }},
-        {{
-          "scene_name": "Scene 4: CTA",
-          "script_thai": "Thai spoken script...",
-          "sora_prompt": "English visual prompt..."
-        }}
+        {{ "scene_name": "Scene 1", "script_thai": "...", "sora_prompt": "..." }},
+        {{ "scene_name": "Scene 2", "script_thai": "...", "sora_prompt": "..." }},
+        {{ "scene_name": "Scene 3", "script_thai": "...", "sora_prompt": "..." }},
+        {{ "scene_name": "Scene 4", "script_thai": "...", "sora_prompt": "..." }}
       ]
     }}
     """
-    
     contents = [prompt_text]
     if image_file:
         try:
             img = Image.open(image_file)
             contents.append(img)
-            contents[0] += "\n\n**[IMAGE ATTACHED]** Base visual prompts on this image."
         except: pass
 
     genai.configure(api_key=api_key)
-    
-    # บังคับ JSON Mode (เฉพาะ Gemini 1.5 ขึ้นไป)
     model = genai.GenerativeModel(model_name, generation_config={"response_mime_type": "application/json"})
-    
-    response = model.generate_content(contents)
-    return response.text
+    return model.generate_content(contents).text
 
-# --- 5. UI Logic ---
+# --- 5. Advanced Video Processing (High Quality + Moving Logo) ---
+
+def pixelate_region(image, x, y, w, h, blocks=10):
+    """ฟังก์ชันทำโมเสกเฉพาะจุด (Manual Pixelate)"""
+    import cv2
+    import numpy as np
+    
+    # Crop region
+    sub_img = image[y:y+h, x:x+w]
+    
+    # Resize small
+    h_sub, w_sub = sub_img.shape[:2]
+    # ป้องกัน error กรณีขนาดเป็น 0
+    if h_sub <= 0 or w_sub <= 0: return image
+    
+    small = cv2.resize(sub_img, (max(1, int(w_sub/blocks)), max(1, int(h_sub/blocks))), interpolation=cv2.INTER_LINEAR)
+    # Resize back
+    pixelated = cv2.resize(small, (w_sub, h_sub), interpolation=cv2.INTER_NEAREST)
+    
+    # Put back
+    image[y:y+h, x:x+w] = pixelated
+    return image
+
+def process_video_advanced(video_path, blur_configs, quality_mode="High"):
+    """
+    blur_configs: list of dict -> [{'start':0, 'end':5, 'pos':'Top-Left'}, ...]
+    quality_mode: 'Normal' (Fast), 'High' (Slow, Better Bitrate)
+    """
+    try:
+        clip = VideoFileClip(video_path)
+        w, h = clip.size
+        
+        # กำหนดขนาดกล่องที่จะเบลอ (ปรับได้)
+        box_w = int(w * 0.3) 
+        box_h = int(h * 0.15)
+
+        def get_pos_coords(pos_name):
+            if pos_name == 'Top-Left': return 0, 0
+            if pos_name == 'Top-Center': return (w//2)-(box_w//2), 0
+            if pos_name == 'Top-Right': return w - box_w, 0
+            
+            if pos_name == 'Middle-Left': return 0, (h//2)-(box_h//2)
+            if pos_name == 'Center': return (w//2)-(box_w//2), (h//2)-(box_h//2)
+            if pos_name == 'Middle-Right': return w - box_w, (h//2)-(box_h//2)
+            
+            if pos_name == 'Bottom-Left': return 0, h - box_h
+            if pos_name == 'Bottom-Center': return (w//2)-(box_w//2), h - box_h
+            if pos_name == 'Bottom-Right': return w - box_w, h - box_h
+            return 0,0
+
+        # ฟังก์ชันที่จะรันทุกเฟรม
+        def frame_processor(get_frame, t):
+            frame = get_frame(t).copy() # เอาภาพเฟรมปัจจุบันมา (ต้อง copy เพื่อไม่ให้เพี้ยน)
+            
+            # วนลูปเช็กว่าวินาทีนี้ (t) ต้องเบลอตรงไหนบ้าง
+            for config in blur_configs:
+                if config['start'] <= t <= config['end']:
+                    px, py = get_pos_coords(config['pos'])
+                    # สั่งเบลอ (Pixelate)
+                    frame = pixelate_region(frame, px, py, box_w, box_h, blocks=15)
+            
+            return frame
+
+        # สร้าง Clip ใหม่ที่ผ่านการประมวลผลเฟรม
+        final_clip = clip.fl(frame_processor)
+        
+        # Output Config
+        output_path = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
+        
+        # High Quality Settings
+        # bitrate: '5000k' = 5Mbps (ชัดมาก), '8000k' (ชัดโคตร)
+        # preset: 'medium' (สมดุล), 'slow' (ชัดขึ้นแต่เรนเดอร์นาน), 'ultrafast' (แตกนิดหน่อยแต่เร็ว)
+        
+        if quality_mode == "High (Slow)":
+            bitrate = "8000k"
+            preset = "medium"
+        else:
+            bitrate = "3000k" # Standard
+            preset = "ultrafast"
+
+        final_clip.write_videofile(
+            output_path, 
+            codec="libx264", 
+            audio_codec="aac",
+            bitrate=bitrate,
+            preset=preset,
+            fps=clip.fps # คง fps เดิมไว้
+        )
+        
+        clip.close()
+        return output_path
+    except Exception as e:
+        print(e)
+        return None
+
+# --- 6. UI Logic ---
 
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'user_info' not in st.session_state: st.session_state.user_info = None
-
-def renewal_screen():
-    st.markdown("""
-    <div style="background-color:#262730;padding:2rem;border-radius:10px;text-align:center;border:1px solid #FF4B4B;">
-        <h2 style="color:#FF4B4B;">⚠️ หมดเวลาทดลองใช้</h2>
-        <p>กรุณาติดต่อแอดมินเพื่อต่ออายุ</p>
-    </div>
-    """, unsafe_allow_html=True)
-    if os.path.exists("payment_qr.jpg"): st.image("payment_qr.jpg", width=200)
-    if st.button("⬅️ กลับ"): 
-        st.session_state.logged_in = False
-        st.rerun()
-
-def admin_dashboard():
-    st.markdown("### 🛠️ Admin Dashboard")
-    with st.form("ext"):
-        u = st.text_input("Username")
-        d = st.selectbox("Days", [30, 90, 365, 3])
-        if st.form_submit_button("Update"):
-            if extend_user_subscription(u, d): st.success("Updated!")
-            else: st.error("User not found")
 
 def login_screen():
     st.markdown("<h1 style='text-align:center;'>⚡ Affiliate Gen Pro</h1>", unsafe_allow_html=True)
@@ -239,87 +280,115 @@ def login_screen():
                 else: st.error("Invalid Code")
 
 def main_app():
-    i = st.session_state.user_info
-    if i['name'] == ADMIN_USERNAME: admin_dashboard()
-    if i['exp'] and i['name'] != ADMIN_USERNAME: renewal_screen(); return
-
-    st.info(f"👤 {i['name']} | ⏳ {i['left']} Days Left")
+    st.info(f"👤 {st.session_state.user_info['name']} | ⏳ {st.session_state.user_info['left']} Days Left")
     if st.button("Logout"): st.session_state.logged_in = False; st.rerun()
     
     key = st.secrets.get("GEMINI_API_KEY")
     
-    # Scraper
-    if 's_t' not in st.session_state: st.session_state.s_t = ""
-    if 's_d' not in st.session_state: st.session_state.s_d = ""
-    with st.expander("🔎 ดึงข้อมูลสินค้า"):
-        url = st.text_input("URL"); 
-        if st.button("Scrape") and url:
-            t, d = scrape_web(url)
-            if t: st.session_state.s_t = t; st.session_state.s_d = d; st.success("✅")
-
-    # Smart Input Form
-    with st.form("gen"):
-        st.subheader("1. ข้อมูลสินค้า")
-        pn = st.text_input("ชื่อสินค้า", value=st.session_state.s_t)
-        img = st.file_uploader("รูปสินค้า", type=['png','jpg','webp'])
-        if img: st.image(img, width=150)
+    # Tabs
+    tab_gen, tab_vid = st.tabs(["🚀 AI Script Generator", "🎬 Advanced Video Tools"])
+    
+    # --- Tab 1: AI (Code เดิม ย่อไว้) ---
+    with tab_gen:
+        if 's_t' not in st.session_state: st.session_state.s_t = ""
+        with st.expander("🔎 Scrape Product"):
+            url = st.text_input("URL"); 
+            if st.button("Scrape") and url:
+                t, d = scrape_web(url); 
+                if t: st.session_state.s_t = t; st.session_state.s_d = d; st.success("✅")
         
-        st.subheader("2. กลยุทธ์")
-        c1, c2 = st.columns(2)
-        with c1: 
-            tone = st.selectbox("โทน", ["ตลก/ไวรัล", "หรูหรา", "เพื่อนสาว", "ดราม่า"])
-            platform = st.selectbox("แพลตฟอร์ม", ["TikTok", "Reels", "Shorts"])
-        with c2: 
-            target = st.text_input("กลุ่มเป้าหมาย", placeholder="เช่น แม่บ้าน, นร.")
-            feat = st.text_area("จุดเด่น", value=st.session_state.s_d, height=100)
-        
-        if st.form_submit_button("⚡ สร้างสคริปต์ (แบบก๊อปง่าย)"):
-            if key:
-                if not pn: st.warning("ใส่ชื่อสินค้าหน่อยครับ")
-                else:
-                    with st.spinner("🤖 AI กำลังแยกชิ้นส่วนข้อมูล..."):
-                        model = get_valid_model(key)
-                        json_res = generate_smart_script_json(key, model, pn, feat, tone, target, platform, url, img)
-                        
-                        # Parse JSON
+        with st.form("gen"):
+            pn = st.text_input("Product Name", value=st.session_state.s_t)
+            img = st.file_uploader("Image", type=['png','jpg'])
+            if st.form_submit_button("Generate"):
+                if key and pn:
+                    with st.spinner("AI Working..."):
+                        m = get_valid_model(key)
+                        res = generate_smart_script_json(key, m, pn, "", "Viral", "General", "TikTok", url, img)
                         try:
-                            data = json.loads(json_res)
-                            
-                            st.success("เสร็จสิ้น! กดปุ่ม Copy ที่มุมขวาบนของแต่ละกล่องได้เลย")
-                            st.markdown("---")
-                            
-                            # 1. Strategy
-                            st.info(f"🧠 **AI Strategy:** {data.get('strategy', '')}")
-                            
-                            # 2. Caption (Copyable)
-                            st.subheader("📝 Caption & Hashtags")
-                            full_caption = f"{data.get('caption', '')}\n\n{data.get('hashtags', '')}"
-                            st.code(full_caption, language='text') # ใช้ st.code เพื่อให้มีปุ่ม copy
-                            
-                            # 3. Hooks
-                            with st.expander("🎣 ทางเลือกเปิดคลิป (Hooks)", expanded=True):
-                                for idx, hook in enumerate(data.get('hooks', [])):
-                                    st.write(f"**Option {idx+1}:**")
-                                    st.code(hook, language='text')
+                            d = json.loads(res)
+                            st.success("Success")
+                            st.code(d.get('caption'), language='text')
+                            for s in d.get('scenes', []): st.code(s.get('sora_prompt'), language='text')
+                        except: st.error("JSON Error")
 
-                            # 4. Scenes (Copyable Prompts)
-                            st.subheader("🎬 Video Script & Sora Prompts")
-                            for scene in data.get('scenes', []):
-                                with st.container():
-                                    st.markdown(f"**{scene.get('scene_name', 'Scene')}**")
-                                    c1, c2 = st.columns([1, 1])
-                                    with c1:
-                                        st.caption("🗣️ บทพูด (ไทย)")
-                                        st.info(scene.get('script_thai', '-'))
-                                    with c2:
-                                        st.caption("🎥 Sora Prompt (English - กด Copy มุมขวาบน)")
-                                        # กล่องนี้แหละที่ลูกค้าต้องการ!
-                                        st.code(scene.get('sora_prompt', ''), language="text")
-                                    st.markdown("---")
-                                    
-                        except Exception as e:
-                            st.error(f"เกิดข้อผิดพลาดในการแปลผล JSON: {e}")
-                            st.text(json_res) # Show raw if error
+    # --- Tab 2: Advanced Video Tools (จุดที่เพิ่มใหม่) ---
+    with tab_vid:
+        st.header("🎬 Dynamic Watermark Remover")
+        st.caption("ลบโลโก้แบบเคลื่อนที่ได้ (Moving Logo) + คุณภาพสูง")
+        
+        uploaded_video = st.file_uploader("Upload Video (MP4/MOV)", type=["mp4", "mov"])
+        
+        if uploaded_video:
+            # Save Temp
+            tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') 
+            tfile.write(uploaded_video.read())
+            video_path = tfile.name
+            
+            # Show Video
+            st.video(video_path)
+            
+            # === ส่วนตั้งค่าการเคลื่อนไหว ===
+            st.markdown("### 📍 กำหนดตำแหน่งการเบลอ (Timeline)")
+            st.info("ถ้าโลโก้อยู่ที่เดิมตลอด ให้ตั้งค่าแค่ช่วงที่ 1 ก็พอ")
+            
+            # State สำหรับเก็บ Config
+            if 'blur_segments' not in st.session_state:
+                st.session_state.blur_segments = [{'start': 0, 'end': 10, 'pos': 'Top-Right'}]
+
+            # UI สำหรับเพิ่ม/ลบ ช่วงเวลา
+            cols = st.columns(3)
+            with cols[0]:
+                if st.button("➕ เพิ่มช่วงเวลา"):
+                    st.session_state.blur_segments.append({'start': 0, 'end': 5, 'pos': 'Bottom-Right'})
+            with cols[1]:
+                if st.button("➖ ลบล่าสุด") and len(st.session_state.blur_segments) > 1:
+                    st.session_state.blur_segments.pop()
+            
+            # วนลูปสร้าง Input สำหรับแต่ละช่วง
+            updated_configs = []
+            for idx, seg in enumerate(st.session_state.blur_segments):
+                st.markdown(f"**ช่วงที่ {idx+1}**")
+                c1, c2, c3 = st.columns([1, 1, 2])
+                with c1:
+                    s = st.number_input(f"เริ่มวินาทีที่ ({idx})", value=int(seg['start']), min_value=0, key=f"s_{idx}")
+                with c2:
+                    e = st.number_input(f"ถึงวินาทีที่ ({idx})", value=int(seg['end']), min_value=0, key=f"e_{idx}")
+                with c3:
+                    p = st.selectbox(f"ตำแหน่ง ({idx})", 
+                                     ["Top-Left", "Top-Center", "Top-Right", 
+                                      "Middle-Left", "Center", "Middle-Right",
+                                      "Bottom-Left", "Bottom-Center", "Bottom-Right"],
+                                     index=["Top-Left", "Top-Center", "Top-Right", "Middle-Left", "Center", "Middle-Right", "Bottom-Left", "Bottom-Center", "Bottom-Right"].index(seg['pos']),
+                                     key=f"p_{idx}")
+                updated_configs.append({'start': s, 'end': e, 'pos': p})
+            
+            st.session_state.blur_segments = updated_configs
+
+            # === Quality Settings ===
+            st.markdown("### ⚙️ Output Settings")
+            quality = st.radio("คุณภาพไฟล์ (Bitrate)", ["Normal (เร็ว)", "High (Slow) - ชัดกริบ"], index=1)
+            
+            if st.button("✨ เริ่มประมวลผลวิดีโอ (Render)"):
+                with st.spinner("⏳ กำลังเรนเดอร์ภาพคุณภาพสูง (High Bitrate)... อาจใช้เวลา 1-2 นาที"):
+                    
+                    # Call Function
+                    out_path = process_video_advanced(video_path, st.session_state.blur_segments, quality)
+                    
+                    if out_path:
+                        st.success("✅ เรนเดอร์เสร็จสิ้น!")
+                        st.video(out_path)
+                        
+                        # Download
+                        with open(out_path, "rb") as f:
+                            st.download_button(
+                                label="⬇️ ดาวน์โหลดวิดีโอ (High Quality)",
+                                data=f,
+                                file_name="cleancut_hq.mp4",
+                                mime="video/mp4"
+                            )
+                    else:
+                        st.error("เกิดข้อผิดพลาด (อย่าลืมเช็ก packages.txt ว่ามี ffmpeg ไหม)")
 
 if st.session_state.logged_in: main_app()
 else: login_screen()
