@@ -311,16 +311,21 @@ def main_app():
             if frame_img:
                 st.markdown("### 2️⃣ วาดทับ Watermark (ระบายสีแดง)")
                 
-                # Canvas size adjustment
+                # 1. คำนวณขนาด Canvas
                 canvas_width = 600
                 aspect_ratio = vid_h / vid_w
                 canvas_height = int(canvas_width * aspect_ratio)
 
+                # ✅ [FIX] ย่อภาพให้เท่ากับ Canvas ก่อนส่งเข้าไป
+                # ถ้าไม่ย่อ จะเกิด AttributeError ใน streamlit-drawable-canvas
+                frame_for_canvas = frame_img.resize((canvas_width, canvas_height))
+
+                # 2. ตัววาด Canvas
                 canvas_result = st_canvas(
                     fill_color="rgba(255, 0, 0, 0.5)",
                     stroke_width=st.slider("ขนาดหัวปากกา", 5, 50, 20),
                     stroke_color="rgba(255, 0, 0, 1)",
-                    background_image=frame_img,
+                    background_image=frame_for_canvas, # ใช้ภาพที่ย่อแล้ว
                     update_streamlit=True,
                     height=canvas_height,
                     width=canvas_width,
@@ -335,6 +340,7 @@ def main_app():
                 if st.button("✨ เริ่มลบ (Inpaint)"):
                     if canvas_result.image_data is not None:
                         with st.spinner("⏳ กำลังลบตามรอยปากกา... (Telea Inpainting)"):
+                            # ส่งข้อมูลที่วาดไปประมวลผล (ฟังก์ชัน process_video_with_mask จะขยาย Mask กลับให้เอง)
                             out_path = process_video_with_mask(video_path, canvas_result.image_data, quality)
                             
                             if out_path:
@@ -353,3 +359,4 @@ def main_app():
 
 if st.session_state.logged_in: main_app()
 else: login_screen()
+
