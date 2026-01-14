@@ -6,3 +6,4 @@ Pillow
 gspread
 oauth2client
 moviepy
+opencv-python-headless
