@@ -1,11 +1,7 @@
 streamlit==1.38.0
 moviepy==1.0.3
-google-generativeai>=0.8.3
-cloudscraper
-beautifulsoup4
-Pillow
-gspread
-oauth2client
 opencv-python-headless
 streamlit-drawable-canvas
 numpy
+gspread
+oauth2client
