@@ -1,0 +1,5 @@
+Since the only file change is the addition of `.gitignore` itself and there are no other file changes provided in the list, there are no build artifacts, dependencies, or temporary files to ignore. The change list contains only the `.gitignore` file itself, which is a config file.
+
+Therefore, no additional ignore rules are needed beyond what might already be appropriate for the project, but since the current content is empty and no specific artifacts are listed, the optimized result is an empty .gitignore.
+
+(empty — output nothing)
