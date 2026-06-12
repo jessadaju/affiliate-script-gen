@@ -1,5 +1,82 @@
-Since the only file change is the addition of `.gitignore` itself and there are no other file changes provided in the list, there are no build artifacts, dependencies, or temporary files to ignore. The change list contains only the `.gitignore` file itself, which is a config file.
+```
+# Compiled and binary files
+*.mq5c
+*.ex5
+*.fxt
+*.gsc
+*.mqh
 
-Therefore, no additional ignore rules are needed beyond what might already be appropriate for the project, but since the current content is empty and no specific artifacts are listed, the optimized result is an empty .gitignore.
+# Build artifacts
+tester/
+tester_files/
+MQL5/Templates/
+MQL5/Profiles/
 
-(empty — output nothing)
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment and system files
+.env
+.env.local
+*.env.*
+.DS_Store
+Thumbs.db
+
+# Dependencies and cache
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.class
+*.jar
+target/
+build/
+dist/
+*.so
+*.dll
+*.dylib
+*.a
+*.lib
+*.obj
+*.o
+*.out
+
+# Coverage and testing
+coverage/
+htmlcov/
+.coverage
+*.coveragerc
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
+```
