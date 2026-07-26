@@ -1,3 +1,3 @@
 # Android APK Build
 
-This file triggers the GitHub Actions workflow after the workflow is present on the default branch.
+Trigger GitHub Actions after making Flutter analyzer warnings non-blocking so APK generation can continue.
