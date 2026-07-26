@@ -1,3 +1,3 @@
 # Android APK Build
 
-This file triggers the GitHub Actions workflow after the workflow is present on the default branch.
+Trigger mobile authentication token build v0.4.
