@@ -3,6 +3,7 @@ name: Build Mobile Affiliate News APK
 on:
   push:
     branches:
+      - main
       - mobile-affiliate-news-build
     paths:
       - 'mobile_affiliate_news/**'
