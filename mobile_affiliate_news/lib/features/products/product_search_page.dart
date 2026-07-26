@@ -11,13 +11,19 @@ class ProductSearchPage extends StatefulWidget {
 
 class _ProductSearchPageState extends State<ProductSearchPage> {
   final controller = TextEditingController(text: 'เครื่องอบรองเท้า');
+  final tokenController = TextEditingController();
   final api = ApiClient();
   bool loading = false;
+  bool hideToken = true;
   List<dynamic> products = [];
   String? error;
 
   Future<void> search() async {
-    setState(() { loading = true; error = null; });
+    ApiClient.accessToken = tokenController.text.trim();
+    setState(() {
+      loading = true;
+      error = null;
+    });
     try {
       products = await api.searchProducts(controller.text.trim());
     } catch (e) {
@@ -28,12 +34,35 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
   }
 
   @override
+  void dispose() {
+    controller.dispose();
+    tokenController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Product Hunter')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(children: [
+          TextField(
+            controller: tokenController,
+            obscureText: hideToken,
+            autocorrect: false,
+            enableSuggestions: false,
+            decoration: InputDecoration(
+              labelText: 'Mobile Access Token',
+              helperText: 'ใช้ Token ฝั่ง Backend เท่านั้น ห้ามใส่ Shopee Secret',
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                onPressed: () => setState(() => hideToken = !hideToken),
+                icon: Icon(hideToken ? Icons.visibility : Icons.visibility_off),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           TextField(
             controller: controller,
             decoration: const InputDecoration(
@@ -48,9 +77,16 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
             icon: const Icon(Icons.search),
             label: const Text('ค้นหาและจัดอันดับ'),
           ),
-          if (loading) const Padding(
-            padding: EdgeInsets.all(16), child: CircularProgressIndicator()),
-          if (error != null) Text(error!, style: const TextStyle(color: Colors.red)),
+          if (loading)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: CircularProgressIndicator(),
+            ),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(error!, style: const TextStyle(color: Colors.red)),
+            ),
           const SizedBox(height: 8),
           Expanded(
             child: ListView.builder(
@@ -67,7 +103,9 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => ContentPreviewPage(product: p)),
+                      MaterialPageRoute(
+                        builder: (_) => ContentPreviewPage(product: p),
+                      ),
                     ),
                   ),
                 );
